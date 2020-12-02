@@ -1,0 +1,232 @@
+module compile
+
+imports
+
+  signatures/asm-x86-sig
+  signatures/flocksubject-sig
+
+strategies 
+
+  compile-program: Root(Func(_, s, r)) -> result
+    where
+      vars := <all-variables> s
+    ; alloc := <allocate-variables> vars
+    ; stack_size := Const(<mul; int-to-string> (<count-variables> s, 8))
+    ; code* := <concat> [
+        [asm:instr |[ main: ]|],
+        [asm:instr |[ push rbp ]|],
+        [asm:instr |[ mov rbp, rsp ]|],
+        [asm:instr |[ sub rsp, ~value:stack_size ]|],
+        <mapconcat(compile(|alloc))> s,
+        <compile(|alloc)> r
+      ]
+    ; formatter := String("\"%i\"")
+    ; result := asm |[
+        extern printf, malloc, free
+        global main
+    	SECTION .data
+    	printstr: db ~initializer:formatter, 0
+        SECTION .text
+        ~instruction*:code*
+      ]|
+    
+  compile(|var-alloc): Block(stmts) -> <mapconcat(compile(|var-alloc)|)> stmts where <debug> stmts
+  
+  compile(|var-alloc): Skip() -> []
+  
+  compile(|var-alloc): Ret(e) -> [exp*, ins*]
+    where
+      exp* := <compile(|var-alloc)> e
+    ; stack_size := Const(<mul; int-to-string> (<count-alloc-variables> var-alloc, 8))
+    ; ins* := [
+        asm:instr |[ pop rax ]|,
+        asm:instr |[ add rsp, ~value:stack_size ]|,
+        asm:instr |[ pop rbp ]|,
+        asm:instr |[ ret ]|
+      ]
+    ; <debug> "here2"
+
+  compile(|var-alloc): DerefAssign(n, e) -> [exp*, pop, loc, store]
+    where
+      exp*   := <compile(|var-alloc)> e
+    ; pop    := asm:instr |[ pop rax ]|
+    ; loc    := <mov-var-into-reg(|var-alloc, RBX())> n
+    ; store  := asm:instr |[ mov QWORD [rbx], rax ]|
+    
+  compile(|var-alloc): Assign(n, e) -> [exp*, store*]
+    where
+      exp*   := <compile(|var-alloc)> e
+    ; store* := [
+        asm:instr |[ pop rax ]|,
+        <mov-reg-into-var(|var-alloc, n)> RAX()
+      ]
+      
+  compile(|var-alloc): IfThenElse(e, s1, s2) -> [if_exp*, pop, cmp, jmp_else, then*, jmp_end, else_label, else*, end_label]
+    where
+      else_label_id := <newname> "lbl"
+    ; end_label_id  := <newname> "lbl"
+    ; if_exp* := <compile(|var-alloc)> e
+    ; pop        := asm:instr |[ pop rax ]|
+    ; cmp        := asm:instr |[ test rax, rax ]|
+    ; jmp_else   := asm:instr |[ jle ~id:else_label_id ]|
+    ; then*      := <compile(|var-alloc)> s1
+    ; jmp_end    := asm:instr |[ jmp ~id:end_label_id ]|
+    ; else_label := asm:instr |[ ~id:else_label_id: ]|
+    ; else*      := <compile(|var-alloc)> s2
+    ; end_label  := asm:instr |[ ~id:end_label_id: ]|
+    
+  compile(|var-alloc): While(e, s) -> [
+      asm:instr |[ ~id:cond_lbl: ]|,
+      e*,
+      asm:instr |[ pop rax ]|,
+      asm:instr |[ cmp rax, 0 ]|,
+      asm:instr |[ je ~id:after_lbl ]|,
+      s*,
+      asm:instr |[ jmp ~id:cond_lbl ]|,
+      asm:instr |[ ~id:after_lbl: ]|
+    ]
+    where
+      cond_lbl  := <newname> "lbl"
+    ; after_lbl := <newname> "lbl"
+    ; e* := <compile(|var-alloc)> e
+    ; s* := <mapconcat(compile(|var-alloc))> s
+    
+  compile(|var-alloc): Print(e) -> [exp*, ins*]
+    where
+      exp* := <compile(|var-alloc)> e
+    ; ins* := [
+    	asm:instr |[ pop rdx ]|,
+    	asm:instr |[ lea rcx, [printstr] ]|,
+    	asm:instr |[ mov rax, 0 ]|,
+    	asm:instr |[ sub rsp, 48 ]|,
+    	asm:instr |[ call printf ]|,
+    	asm:instr |[ mov rax, 0 ]|,
+    	asm:instr |[ add rsp, 48 ]|
+      ]
+  
+  compile(|var-alloc): Free(n) -> [
+      load,
+      asm:instr |[ sub rsp, 48 ]|,
+      asm:instr |[ call free ]|,
+      asm:instr |[ add rsp, 48 ]|
+    ]
+    where
+      load := <mov-var-into-reg(|var-alloc, RCX())> n
+  
+  compile(|var-alloc): Malloc() -> [
+    asm:instr |[ mov rcx, 1 ]|,
+    asm:instr |[ sub rsp, 48 ]|,
+    asm:instr |[ call malloc ]|,
+    asm:instr |[ add rsp, 48 ]|,
+    asm:instr |[ push rax ]|
+  ]
+  
+  compile(|var-alloc): Int(i) -> [asm:instr |[ push ~value:val ]|] with val := Const(i)
+  
+  compile(|var-alloc): Ref(n) -> [<mov-var-into-reg(|var-alloc, RAX())> n, asm:instr |[ push rax ]|]
+  
+  compile(|var-alloc): Deref(n) -> [e, load, push]
+      where
+      e     := <mov-var-into-reg(|var-alloc, RBX())> n
+    ; load  := asm:instr |[ mov rax, QWORD [rbx] ]|
+    ; push  := asm:instr |[ push rax ]|
+  
+  compile(|var-alloc): True()  -> [asm:instr |[ push 1 ]|]
+  
+  compile(|var-alloc): False() -> [asm:instr |[ push 0 ]|]
+  
+  compile(|var-alloc): Add(e1, e2) -> [
+  	e1*,
+  	e2*,
+  	asm:instr |[ pop rax ]|,
+  	asm:instr |[ pop rbx ]|,
+  	asm:instr |[ add rax, rbx ]|,
+  	asm:instr |[ push rax ]|
+  ]
+  where
+    e1* := <compile(|var-alloc)> e1
+  ; e2* := <compile(|var-alloc)> e2
+  
+  compile(|var-alloc): Sub(e1, e2) -> [
+  	e1*,
+  	e2*,
+  	asm:instr |[ pop rax ]|,
+  	asm:instr |[ pop rbx ]|,
+  	asm:instr |[ sub rbx, rax ]|,
+  	asm:instr |[ push rbx ]|
+  ]
+  where
+    e1* := <compile(|var-alloc)> e1
+  ; e2* := <compile(|var-alloc)> e2
+  
+  compile(|var-alloc): Gt(e1, e2) -> [
+  	  e1*,
+  	  e2*,
+  	  asm:instr |[ pop rbx ]|,
+  	  asm:instr |[ pop rax ]|,
+  	  asm:instr |[ cmp rax, rbx ]|,
+  	  asm:instr |[ jle ~id:false_lbl ]|,
+  	  asm:instr |[ push 1 ]|,
+  	  asm:instr |[ jmp ~id:after_lbl ]|,
+  	  asm:instr |[ ~id:false_lbl: ]|,
+  	  asm:instr |[ push 0 ]|,
+  	  asm:instr |[ ~id:after_lbl: ]|
+    ]
+    where
+      after_lbl := <newname> "lbl"
+    ; false_lbl := <newname> "lbl"
+    ; e1* := <compile(|var-alloc)> e1
+    ; e2* :=<compile(|var-alloc)> e2
+
+  compile(|var-alloc): Gte(e1, e2) -> [
+  	  e1*,
+  	  e2*,
+  	  asm:instr |[ pop rbx ]|,
+  	  asm:instr |[ pop rax ]|,
+  	  asm:instr |[ cmp rax, rbx ]|,
+  	  asm:instr |[ jl ~id:false_lbl ]|,
+  	  asm:instr |[ push 1 ]|,
+  	  asm:instr |[ jmp ~id:after_lbl ]|,
+  	  asm:instr |[ ~id:false_lbl: ]|,
+  	  asm:instr |[ push 0 ]|,
+  	  asm:instr |[ ~id:after_lbl: ]|
+    ]
+    where
+      after_lbl := <newname> "lbl"
+    ; false_lbl := <newname> "lbl"
+    ; e1* := <compile(|var-alloc)> e1
+    ; e2* :=<compile(|var-alloc)> e2
+  
+  compile(|var-alloc): ArrayIdx(arr, i) -> <fail>
+  
+  
+  mov-var-into-reg(|allocation, reg): var-name -> asm:instr |[ mov ~register:reg, QWORD [rbp - ~value:val] ]| 
+    with val := <get-variable-offset(|var-name); int-to-string> allocation
+  
+  mov-reg-into-var(|allocation, var): reg ->  asm:instr |[ mov QWORD [rbp - ~value:offset], ~register:reg ]| 
+    with offset := Const(<get-variable-offset(|var); int-to-string> allocation)
+  
+  get-variable-offset(|var-name): [(name, c) | t] -> c
+    where <eq> (name, var-name)
+  
+  get-variable-offset(|var-name): [(name, c) | t] -> <get-variable-offset(|var-name)> t
+    where <not(eq)> (name, var-name)
+
+  
+  // Gives offset from rbp
+  allocate-variables(|c): [n | t] -> [(n, c) | <allocate-variables(|<int-add(|8)> c)> t]
+  allocate-variables(|c): [] -> []
+  allocate-variables = allocate-variables(|8) // Start at 4 since variables are in direction of positive addres space
+    
+  count-variables: p -> count
+    where
+      uniques := <all-variables> p
+    ; count   := <length> uniques
+
+  count-alloc-variables = length
+    
+  all-variables = collect-all(is-assign; assign-name|); make-set
+  
+  is-assign = ?Assign(_, _)
+  assign-name: Assign(n, _) -> n
+  

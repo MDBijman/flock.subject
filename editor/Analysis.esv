@@ -1,0 +1,5 @@
+module Analysis
+
+language
+
+  observer : editor-analyze (constraint)

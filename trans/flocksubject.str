@@ -1,0 +1,35 @@
+module flocksubject
+
+imports
+  asm-x86-pp
+  completion/completion
+  
+  pp
+  outline
+  optimize
+  compile
+
+rules // Debugging
+  
+  debug-show-aterm:
+    (node, _, _, path, project-path) -> (filename, result)
+    with
+      filename := <guarantee-extension(|"aterm")> path
+    ; result   := node
+
+rules // Compilation
+
+  editor-compile-program:
+    (node, _, _, path, project-path) -> (filename, result)
+    with
+      filename := <guarantee-extension(|"asm")> path
+    ; <compile-program; pp-asm-x86-string> node => result
+      
+rules // Optimization
+     
+  editor-optimize-program:
+    (node, _, _, path, project-path) -> (filename, result)
+    with
+      filename := <guarantee-extension(|"opt.fls")> path
+    ; <optimize-program; pp-flocksubject-string> node => result
+

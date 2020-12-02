@@ -1,0 +1,12 @@
+module Main
+
+imports
+
+  Syntax
+
+language
+
+  extensions : fls
+
+  provider : target/metaborg/stratego.ctree
+  provider : target/metaborg/stratego.jar
