@@ -1,0 +1,40 @@
+module api
+
+signature
+  constructors
+    FlockNodeId : Int -> FlockNodeId
+
+strategies
+
+  flock-add-id = topdown(add-id-annotation)
+  
+  add-id-annotation: t -> t { FlockNodeId(<make-id>) }
+
+strategies
+
+  flock-analyse-program = analyse-program
+  external analyse-program(|)
+  
+  flock-is-live(|name): node {FlockNodeId(n)} -> <is-live(|name {})> n
+  flock-is-live: (name, loc) -> <is-live(|name)> loc
+  external is-live(|n)
+  
+  flock-get-alias-set: node {FlockNodeId(n)} -> <get-alias-set(|n)>
+  external get-alias-set(|n)
+  
+  flock-get-value(|name): node {FlockNodeId(n)} -> <get-value(|name)> n
+  external get-value(|n)
+  
+  flock-replace-node(|old): new -> <add-id-annotation; replace-node(|old)> new
+  external replace-node(|n)
+  
+  flock-update: program -> <update> program
+  external update(|)
+  
+  external delete-node(|)
+  
+  //flock-get-program = get-program(|) 
+  //external get-program(|)
+
+  external make-id(|)
+  

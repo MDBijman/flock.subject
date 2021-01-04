@@ -1,56 +1,69 @@
 module optimize
 
+imports
+  flock/api
+
 signature
   constructors
     Const : INT -> Const
 
 strategies 
 
-  optimize-program = fixpoint-opt(|500)
+  optimize-program: p -> p''
+    with
+      p' := <flock-add-id> p
+    ; <debug> p'
+    ; <flock-analyse-program> p'
+    ; p'' := <fixpoint-opt(optimize-program-inner | 3000)> p'
 
-  fixpoint-opt(|0) = id
-  fixpoint-opt(|bound): p -> p'
-  with 
-    p'' := <optimize-program-inner> p
-  ; p'  := <equal(|p) <+ fixpoint-opt(|<dec> bound)> p''
+  fixpoint-opt(s|0) = id
+  fixpoint-opt(s|bound): p -> <s < (fixpoint-opt(s | <dec> bound)) + id> p
+  where <not(equal(|0))> bound
 
-  optimize-program-inner: p -> r
-  with
-    <analyse-program> p
-  //; <try(oncetd(?n; opt; replace-node(|p, n)))> p
-  ; r := <try(oncetd(opt))> p
-
-  opt = (fold-expressions <+ remove-dead-heap-store <+ propagate-constant-read <+ remove-dead-store <+ remove-dead-code) 
-
+  optimize-program-inner: p -> p'
+  where 
+   p' := <oncetd(opt)> p
+ ; <flock-update> p'
+    
+  opt: p -> p''
+  where 
+    p'  := <fold-expressions + remove-dead-heap-store + propagate-constant-read + remove-dead-store + remove-dead-code> p 
+  ; p'' := <flock-replace-node(|p)> p'
+  
 strategies
 
-  fold-expressions: Add(Int(v1), Int(v2)) -> Int(<(string-to-int, string-to-int); addi; int-to-string> (v1, v2))
-  fold-expressions: Sub(Int(v1), Int(v2)) -> Int(<(string-to-int, string-to-int); subti; int-to-string> (v1, v2))
+  fold-expressions: Add(Int(v1), Int(v2)) -> Int(sum)
+  where 
+    sum := <(string-to-int, string-to-int); addi; int-to-string> (v1, v2)
+  ; <concat-strings; debug> ["[fold-expressions] ", v1, " + ", v2, " -> ", sum]
+  
+  fold-expressions: Sub(Int(v1), Int(v2)) -> Int(sub)
+  where
+    sub := <(string-to-int, string-to-int); subti; int-to-string> (v1, v2)
+  ; <concat-strings; debug> ["[fold-expressions] ", v1, " + ", v2, " -> ", sub]
   
 strategies
 
   propagate-constant-read: a@Ref(m) -> Int(v)
   where
-    Const(v) := <get-value(|m)> a
+    Const(v) := <flock-get-value(|m)> a
   ; <concat-strings; debug> ["Const value ", m, ": ", v]
 
   remove-dead-store: a@Assign(n, _) -> Skip()
   where
-    <not(is-live(|n))> a
+    <not(flock-is-live(|n))> a
   ; <concat-strings; debug> ["dead variable ", n]
 
   remove-dead-heap-store: a@DerefAssign(n, _) -> Skip()
   where
-    <debug> a
-  ; <not(is-live(|n))> a
+    <not(flock-is-live(|n))> a
   ; as := <get-alias-set(|n)> a 
-  ; <debug> (a, as)
-  ; <map(!(<id>, a); not(is-live)|)> as
+  ; <map(!(<id>, a); not(flock-is-live)|)> as
   ; <concat-strings; debug> ["dead heap store ", n]
 
 strategies
 
-  remove-dead-code = remove-empty-block <+ remove-empty-while <+ remove-skip <+ remove-dead-if <+ remove-singleton-block
+  remove-dead-code = fail //remove-empty-block <+ remove-empty-while <+ remove-skip <+ remove-dead-if <+ remove-singleton-block
 
   remove-empty-block: Block([]) -> Skip()
   where <debug> "removing empty block"
@@ -85,15 +98,5 @@ strategies
   remove-singleton-block: Block([s]) -> s
   where <debug> "unwrapping statement from block"
 
-strategies
 
-  is-live: (name, loc) -> <is-live(|name)> loc
-
-  external analyse-program(|)
-  external is-live(|n)
-  external get-alias-set(|n)
-  external get-value(|n)
-  
-  external replace-node(|g, n)
-  external delete-node(|g)
   

@@ -21,7 +21,7 @@ context-free syntax
   Expr.Deref = "*" ID
   Expr.True = "true"
   Expr.False = "false"
-  Expr.Add = Expr "+" Expr
+  Expr.Add = Expr "+" Expr {left}
   Expr.Sub = Expr "-" Expr
   Expr.ArrayIdx = Expr "[" Expr "]" 
   Expr.Gt = Expr ">" Expr

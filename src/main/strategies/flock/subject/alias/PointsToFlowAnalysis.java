@@ -67,15 +67,29 @@ public class PointsToFlowAnalysis {
 		}
 	}
 
+	public static void performDataAnalysis(CfgNode root) {
+		HashSet<CfgNode> nodeset = new HashSet<CfgNode>();
+		nodeset.add(root);
+		performDataAnalysis(new HashSet<CfgNode>(), nodeset);
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> nodeset) {
+		performDataAnalysis(new HashSet<CfgNode>(), nodeset);
+	}
+	
 	public static void performDataAnalysis(CfgGraph graph) {
+		performDataAnalysis(graph.roots, graph.flatten());
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset) {
 		Queue<CfgNode> worklist = new LinkedBlockingQueue<>();
 		HashSet<CfgNode> inWorklist = new HashSet<>();
-		for (CfgNode node : graph.flatten()) {
+		for (CfgNode node : nodeset) {
 			worklist.add(node);
 			inWorklist.add(node);
 			initCfgNode(node);
 		}
-		for (CfgNode root : graph.roots) {
+		for (CfgNode root : roots) {
 			root.getProperty("locations").value = root.getProperty("locations").init.eval(root);
 		}
 		while (!worklist.isEmpty()) {

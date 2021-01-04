@@ -4,6 +4,7 @@ import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.interpreter.terms.IStrategoAppl;
 import org.spoofax.interpreter.terms.IStrategoTuple;
 import org.spoofax.interpreter.terms.IStrategoList;
+import org.spoofax.interpreter.terms.IStrategoString;
 import org.spoofax.terms.io.TAFTermReader;
 import org.spoofax.terms.TermFactory;
 import java.io.IOException;
@@ -27,6 +28,7 @@ import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
 import flock.subject.common.CfgGraph;
 import flock.subject.common.CfgNode;
+import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
 import flock.subject.common.MapUtils;
@@ -64,22 +66,37 @@ public class ValueFlowAnalysis {
 			}
 		}
 	}
-
+	
+	public static void performDataAnalysis(CfgNode root) {
+		HashSet<CfgNode> nodeset = new HashSet<CfgNode>();
+		nodeset.add(root);
+		performDataAnalysis(new HashSet<CfgNode>(), nodeset);
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> nodeset) {
+		performDataAnalysis(new HashSet<CfgNode>(), nodeset);
+	}
+	
 	public static void performDataAnalysis(CfgGraph graph) {
+		performDataAnalysis(graph.roots, graph.flatten());
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset) {
 		Queue<CfgNode> worklist = new LinkedBlockingQueue<>();
 		HashSet<CfgNode> inWorklist = new HashSet<>();
-		for (CfgNode node : graph.flatten()) {
+		for (CfgNode node : nodeset) {
 			worklist.add(node);
 			inWorklist.add(node);
 			initCfgNode(node);
 		}
-		for (CfgNode root : graph.roots) {
+		for (CfgNode root : roots) {
 			root.getProperty("values").value = root.getProperty("values").init.eval(root);
 		}
 		while (!worklist.isEmpty()) {
 			CfgNode node = worklist.poll();
 			inWorklist.remove(node);
 			Object values_n = node.getProperty("values").transfer.eval(node);
+			
 			for (CfgNode successor : node.children) {
 				boolean changed = false;
 				Object values_o = successor.getProperty("values").value;
@@ -101,6 +118,7 @@ public class ValueFlowAnalysis {
 			}
 		}
 	}
+	
 }
 
 class Lattices {
@@ -204,8 +222,10 @@ class ValueLattice extends Lattice {
 	}
 
 	@Override
-	public Object lub(Object l_t, Object r_t) {
-		return ((Supplier) () -> {
+	public Object lub(Object left, Object right) {
+		IStrategoTerm l_t = ((ValueValue) left).value;
+		IStrategoTerm r_t = ((ValueValue) right).value;
+		IStrategoTerm result = (IStrategoTerm) ((Supplier) () -> {
 			IStrategoTerm term0 = Helpers
 					.toTerm(new StrategoTuple(new IStrategoTerm[] { Helpers.toTerm(l_t), Helpers.toTerm(r_t) }, null));
 			if (TermUtils.isTuple(term0)
@@ -242,6 +262,10 @@ class ValueLattice extends Lattice {
 			}
 			throw new RuntimeException("Could not match term '" + term0 + "'.");
 		}).get();
+		Set<CfgNodeId> origins = new HashSet<CfgNodeId>();
+		origins.addAll(((ValueValue) left).origin);
+		origins.addAll(((ValueValue) right).origin);
+		return new ValueValue(result, origins);
 	}
 }
 
@@ -283,19 +307,19 @@ class TransferFunction1 extends TransferFunction {
 	public Object eval(CfgNode node) {
 		IStrategoTerm term = node.term;
 		CfgNode prev_t = node;
-		IStrategoTerm n_t = Helpers.at(term, 0);
+		IStrategoString n_t = (IStrategoString) Helpers.at(term, 0);
 		return new EnvironmentLattice().lub(((Supplier) () -> {
 			Map result = new HashMap();
-			for (Map.Entry<Object, Object> e : ((Map<Object, Object>) UserFunctions.values_f(prev_t)).entrySet()) {
-				Object k_t = e.getKey();
+			for (Map.Entry<String, Object> e : ((Map<String, Object>) UserFunctions.values_f(prev_t)).entrySet()) {
+				String k_t = e.getKey();
 				Object v_t = e.getValue();
-				if (!k_t.equals(n_t)) {
+				if (!k_t.equals(n_t.stringValue())) {
 					result.put(k_t, v_t);
 				}
 			}
 			return result;
-		}).get(), MapUtils.create(n_t,
-				new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null)));
+		}).get(), MapUtils.create(n_t.stringValue(),
+				new ValueValue(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null), node.id)));
 	}
 }
 
@@ -304,20 +328,20 @@ class TransferFunction2 extends TransferFunction {
 	public Object eval(CfgNode node) {
 		IStrategoTerm term = node.term;
 		CfgNode prev_t = node;
-		IStrategoTerm n_t = Helpers.at(term, 0);
+		IStrategoString n_t = (IStrategoString) Helpers.at(term, 0);
 		IStrategoTerm i_t = Helpers.at(Helpers.at(term, 1), 0);
 		return new EnvironmentLattice().lub(((Supplier) () -> {
 			Map result = new HashMap();
-			for (Map.Entry<Object, Object> e : ((Map<Object, Object>) UserFunctions.values_f(prev_t)).entrySet()) {
-				Object k_t = e.getKey();
+			for (Map.Entry<String, Object> e : ((Map<String, Object>) UserFunctions.values_f(prev_t)).entrySet()) {
+				String k_t = e.getKey();
 				Object v_t = e.getValue();
-				if (!k_t.equals(n_t)) {
+				if (!k_t.equals(n_t.stringValue())) {
 					result.put(k_t, v_t);
 				}
 			}
 			return result;
-		}).get(), MapUtils.create(n_t, new StrategoAppl(new StrategoConstructor("Const", 1),
-				new IStrategoTerm[] { Helpers.toTerm(i_t) }, null)));
+		}).get(), MapUtils.create(n_t.stringValue(), new ValueValue(new StrategoAppl(new StrategoConstructor("Const", 1),
+				new IStrategoTerm[] { Helpers.toTerm(i_t) }, null), node.id)));
 	}
 }
 

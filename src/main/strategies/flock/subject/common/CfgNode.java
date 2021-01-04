@@ -35,19 +35,19 @@ import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
 
 public class CfgNode {
-	public CfgNode(IStrategoTerm term) {
-		this.term = term;
+	
+	public CfgNode(CfgNodeId id) {
 		children = new HashSet<>();
 		parents = new HashSet<>();
 		properties = new HashMap<>();
-		properties = new HashMap<>();
+		this.id = id;
 	}
 
 	public HashMap<String, Property> properties;
-	public IStrategoTerm term;
 	public Set<CfgNode> children;
 	public Set<CfgNode> parents;
 	public CfgNodeId id;
+	public IStrategoTerm term;
 
 	public void addProperty(String name, Lattice lat) {
 		properties.put(name, new Property(name, lat));
@@ -55,10 +55,6 @@ public class CfgNode {
 
 	public Property getProperty(String name) {
 		return properties.get(name);
-	}
-
-	public IStrategoTerm getTerm() {
-		return this.term;
 	}
 
 	public Set<CfgNode> getChildren() {

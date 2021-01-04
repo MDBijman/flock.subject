@@ -100,7 +100,22 @@ def gen_many_branch(n):
     f.write(f"\treturn a{n};\n")
     f.write("}\n")
 
+def gen_large_expr(n):
+    f = open("large_expr.fls", "w")
+    f.write("fn main() {\n")
+    f.write("\ta := 1")
+    for i in range(1, n):
+        f.write(f" + 1")
+    f.write(";\n")
+     
+   
+    f.write(f"\tprint(a);\n")
+    f.write(f"\treturn a;\n")
+    f.write("}\n")
+
 gen_many_loops()
 gen_many_vars(100)
 gen_many_vars2(100)
 gen_many_branch(10000)
+
+gen_large_expr(40)

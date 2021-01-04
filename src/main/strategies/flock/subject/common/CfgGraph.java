@@ -2,6 +2,7 @@ package flock.subject.common;
 
 import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.interpreter.terms.IStrategoAppl;
+import org.spoofax.interpreter.terms.IStrategoInt;
 import org.spoofax.interpreter.terms.IStrategoTuple;
 import org.spoofax.interpreter.terms.IStrategoList;
 import org.spoofax.terms.io.TAFTermReader;
@@ -9,10 +10,13 @@ import org.spoofax.terms.TermFactory;
 import java.io.IOException;
 import org.spoofax.terms.util.M;
 import org.spoofax.terms.util.TermUtils;
+import org.strategoxt.lang.Context;
+
 import java.util.HashSet;
 import java.util.Set;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Queue;
@@ -25,37 +29,204 @@ import org.spoofax.terms.StrategoConstructor;
 import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
+
+import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.common.CfgGraph;
-import flock.subject.common.CfgNode;
-import flock.subject.common.Helpers;
-import flock.subject.common.Lattice;
-import flock.subject.common.MapUtils;
-import flock.subject.common.SetUtils;
-import flock.subject.common.TransferFunction;
-import flock.subject.common.UniversalSet;
+import flock.subject.live.LiveVariablesFlowAnalysis;
+import flock.subject.live.LivenessValue;
+import flock.subject.strategies.Program;
+import flock.subject.value.ValueFlowAnalysis;
+import flock.subject.value.ValueValue;
 
 public class CfgGraph {
 	public Set<CfgNode> roots;
-	public HashMap<IStrategoTerm, CfgNode> termToNode;
 	public HashMap<CfgNodeId, CfgNode> idToNode;
-	private CfgNodeId nextId;
+	public HashMap<CfgNodeId, IStrategoTerm> idToTerm;
 
-	public CfgGraph(Set<CfgNode> roots) {
+	private HashSet<CfgNode> dirty;
+	static private CfgNodeId nextId = new CfgNodeId(0);
+	
+	public CfgGraph(Set<CfgNode> roots, IStrategoTerm root) {
 		this.roots = roots;
-		this.termToNode = new HashMap<IStrategoTerm, CfgNode>();
-		this.idToNode = new HashMap<CfgNodeId, CfgNode>();
-		this.nextId = new CfgNodeId(0);
+		this.idToNode = new HashMap<>();
+		this.idToTerm = new HashMap<>();
+		this.dirty = new HashSet<CfgNode>();
 		
-		for (CfgNode t : flatten()) {
-			this.termToNode.put(t.term, t);
-			this.idToNode.put(this.nextId, t);
-			t.id = this.nextId;
-			this.nextId = this.nextId.successor();
+		for (CfgNode n : this.flatten()) {
+			this.idToNode.put(n.id, n);
 		}
 	}
 
-	public CfgNode getTermNode(IStrategoTerm t) {
-		return this.termToNode.get(t);
+	public void replaceNode(Context context, CfgNode current, IStrategoTerm replacement) {
+		Set<CfgNodeId> ids = getAllIds(current.term);
+
+		Set<CfgNode> dependents = getTermDependencies(current);
+		for (CfgNode n : dependents) {
+			ids.add(n.id);
+			//context.getIOAgent().printError("Added dep: " + n.id.getId());
+		}
+		
+		//context.getIOAgent().printError("Ids in node/dependency:");
+		//for(CfgNodeId id: ids) {
+		//	context.getIOAgent().printError(id.getId() + "");
+		//}
+		//context.getIOAgent().printError("End");
+
+		for (CfgNode n : this.flatten()) {
+			boolean changed = false;
+			for (CfgNodeId id : ids) {
+				boolean isRemoved = removeFact(context, n, id);
+				changed |= isRemoved;
+			}
+			if (changed) {
+				dirty.add(n);
+				//context.getIOAgent().printError("Changed at: " + n.id.getId() + "");
+			}
+		}
+
+		Set<CfgNode> newCfgNodes = createCfg(replacement);
+		
+		// Fix parent to (new) child links
+		for (CfgNode parent : current.parents) {
+			parent.children.remove(current);
+			parent.addChild(newCfgNodes);
+		}
+		
+		// Fix new node to old child links
+		for (CfgNode newLeaf : getAllLeaves(newCfgNodes)) {
+			newLeaf.addChild(current.children);
+			for (CfgNode child : current.children) {
+				child.parents.remove(current);
+				child.parents.add(newLeaf);
+			}
+		}
+		
+		// Fix roots
+		boolean replacedRoot = this.roots.removeIf(root -> ids.contains(root.id));
+		if (replacedRoot) {
+			if (newCfgNodes.size() > 0) {
+				this.roots.addAll(newCfgNodes);
+			} else {
+				this.roots.addAll(current.children);
+			}
+		}
+		
+		for (CfgNode n : newCfgNodes) {
+			dirty.add(n);
+		}
+
+
+	}
+	
+	private boolean removeFact(Context context, CfgNode current, CfgNodeId toRemove) {
+		Set<LivenessValue> lv = (Set<LivenessValue>) current.getProperty("live").value;
+		assert lv != null;
+		boolean removedLiveness = lv.removeIf(ll -> { 
+			boolean isSame = ll.origin.getId() == toRemove.getId();
+			if (isSame) {
+				//context.getIOAgent().printError("Removing fact with origin " + toRemove.getId() + " at " + current.id.getId());
+			}
+			return isSame; 
+		});
+		
+		HashMap<String, ValueValue> cv = (HashMap<String, ValueValue>) current.getProperty("values").value;
+		assert cv != null;
+		
+		//context.getIOAgent().printError(current.id.getId() +" "+ toRemove.getId()+" "+ cv.toString());
+		boolean removedConst = cv.entrySet().removeIf(ll -> { 
+			boolean isSame = ll.getValue().origin.contains(toRemove);
+			if (isSame) {
+				//context.getIOAgent().printError("Removing fact with origin " + toRemove.getId() + " at " + current.id.getId());
+			}
+			return isSame; 
+		});
+	
+		return removedLiveness || removedConst;
+	}
+
+	public void update(Context context, IStrategoTerm program) {
+		updateTermMap(program);
+	
+		for (CfgNode n : dirty) {
+			idToNode.put(n.id, n);
+		}
+		
+		for (Entry<CfgNodeId, CfgNode> e : idToNode.entrySet()) {
+			e.getValue().term = idToTerm.get(e.getKey());
+		}
+
+		
+		Set<CfgNode> recompute = new HashSet<>();
+		
+		for (CfgNode n : dirty) {
+			recompute.addAll(getTermDependencies(n));
+		}
+		long begin = System.currentTimeMillis();
+		ValueFlowAnalysis.performDataAnalysis(recompute);
+		context.getIOAgent().printError("Time: " + (System.currentTimeMillis() - begin));
+		LiveVariablesFlowAnalysis.performDataAnalysis(recompute);
+		PointsToFlowAnalysis.performDataAnalysis(recompute);
+		
+		dirty.clear();
+	}
+	
+	private Set<CfgNode> getTermDependencies(CfgNode n) {
+		Set<CfgNode> r = new HashSet<>();
+		
+		r.add(n);
+		
+		// Folding
+		if (TermUtils.isAppl(n.term, "Int", 1)) {
+			r.addAll(n.parents);
+		}
+		// Propagation
+		for (CfgNode p : n.children) {
+			if (TermUtils.isAppl(p.term, "Assign", -1)) {
+				r.add(p);
+			}			
+		}
+	
+		return r;
+	}
+	
+	private void updateTermMap(IStrategoTerm program) {
+		for(IStrategoTerm t : program.getSubterms()) {
+			updateTermMap(t);
+		}
+		
+		CfgNodeId id = getTermNodeId(program);
+		
+		if (id != null) {
+			this.idToTerm.put(id, program);
+		}
+	}
+	
+	private Set<CfgNodeId> getAllIds(IStrategoTerm program) {
+		HashSet<CfgNodeId> set = new HashSet<>();
+		getAllIds(set, program);
+		return set;
+	}
+	
+	private void getAllIds(Set<CfgNodeId> visited, IStrategoTerm program) {
+		for (IStrategoTerm t : program.getSubterms()) {
+			getAllIds(visited, t);
+		}
+		
+		CfgNodeId id = getTermNodeId(program);
+		
+		if (id != null) {
+			visited.add(id);
+		}
+	}
+	
+	static public CfgNodeId nextNodeId() {
+		CfgNodeId id = nextId;
+		nextId = nextId.successor();
+		return id;
+	}
+	
+	public CfgNode getCfgNode(CfgNodeId id) {
+		return this.idToNode.get(id);
 	}
 
 	public Set<CfgNode> getRoots() {
@@ -65,10 +236,13 @@ public class CfgGraph {
 	public String toGraphviz() {
 		String result = "digraph G {\n";
 		for (CfgNode node : flatten()) {
+			
+			String valueString = node.getProperty("values") != null ? node.getProperty("values").value.toString().replace("\"", "\\\"") :"";
+			
 			result += node.hashCode() + "[label=\""
-					+ node.term.toString().replace("\\", "\\\\").replace("\t", "\\t").replace("\b", "\\b")
-							.replace("\n", "\\n").replace("\r", "\\r").replace("\f", "\\f").replace("\'", "\\'")
-							.replace("\"", "\\\"")
+					+ node.id.getId() + " "
+					+ node.term.toString().replace("\"", "\\\"") + " "
+					+ valueString
 					+ "\"];";
 			for (CfgNode child : node.children) {
 				result += node.hashCode() + "->" + child.hashCode() + ";\n";
@@ -95,9 +269,9 @@ public class CfgGraph {
 	}
 
 	public static CfgGraph createControlFlowGraph(IStrategoTerm ast) {
-		return new CfgGraph(createCfgs(ast));
+		return new CfgGraph(createCfgs(ast), ast);
 	}
-
+	
 	private static Set<CfgNode> createCfgs(IStrategoTerm term) {
 		Set<CfgNode> nodes = new HashSet<>();
 		if (TermUtils.isAppl(term)) {
@@ -110,7 +284,7 @@ public class CfgGraph {
 		}
 		return nodes;
 	}
-
+	
 	private static Set<CfgNode> createCfg(IStrategoTerm term) {
 		Set<CfgNode> result = new HashSet<>();
 		if (TermUtils.isList(term)) {
@@ -154,7 +328,7 @@ public class CfgGraph {
 			IStrategoTerm e_t = Helpers.at(term, 1);
 			Set<CfgNode> e_nr = createCfg(e_t);
 			Set<CfgNode> e_lr = getAllLeaves(e_nr);
-			CfgNode _Assign_nb = new CfgNode(_Assign_t);
+			CfgNode _Assign_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Assign_lb = _Assign_nb.getLeaves();
 			result.addAll(e_nr);
 			for (CfgNode leave : e_lr) {
@@ -167,7 +341,7 @@ public class CfgGraph {
 			IStrategoTerm e_t = Helpers.at(term, 1);
 			Set<CfgNode> e_nr = createCfg(e_t);
 			Set<CfgNode> e_lr = getAllLeaves(e_nr);
-			CfgNode _DerefAssign_nb = new CfgNode(_DerefAssign_t);
+			CfgNode _DerefAssign_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _DerefAssign_lb = _DerefAssign_nb.getLeaves();
 			result.addAll(e_nr);
 			for (CfgNode leave : e_lr) {
@@ -180,7 +354,7 @@ public class CfgGraph {
 			IStrategoTerm e_t = Helpers.at(term, 0);
 			Set<CfgNode> e_nr = createCfg(e_t);
 			Set<CfgNode> e_lr = getAllLeaves(e_nr);
-			CfgNode _Ret_nb = new CfgNode(_Ret_t);
+			CfgNode _Ret_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Ret_lb = _Ret_nb.getLeaves();
 			result.addAll(e_nr);
 			for (CfgNode leave : e_lr) {
@@ -234,7 +408,7 @@ public class CfgGraph {
 			Set<CfgNode> e1_lr = getAllLeaves(e1_nr);
 			Set<CfgNode> e2_nr = createCfg(e2_t);
 			Set<CfgNode> e2_lr = getAllLeaves(e2_nr);
-			CfgNode _Add_nb = new CfgNode(_Add_t);
+			CfgNode _Add_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Add_lb = _Add_nb.getLeaves();
 			result.addAll(e1_nr);
 			for (CfgNode leave : e1_lr) {
@@ -251,7 +425,7 @@ public class CfgGraph {
 			Set<CfgNode> e1_lr = getAllLeaves(e1_nr);
 			Set<CfgNode> e2_nr = createCfg(e2_t);
 			Set<CfgNode> e2_lr = getAllLeaves(e2_nr);
-			CfgNode _Sub_nb = new CfgNode(_Sub_t);
+			CfgNode _Sub_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Sub_lb = _Sub_nb.getLeaves();
 			result.addAll(e1_nr);
 			for (CfgNode leave : e1_lr) {
@@ -268,7 +442,7 @@ public class CfgGraph {
 			Set<CfgNode> e1_lr = getAllLeaves(e1_nr);
 			Set<CfgNode> e2_nr = createCfg(e2_t);
 			Set<CfgNode> e2_lr = getAllLeaves(e2_nr);
-			CfgNode _Gt_nb = new CfgNode(_Gt_t);
+			CfgNode _Gt_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Gt_lb = _Gt_nb.getLeaves();
 			result.addAll(e1_nr);
 			for (CfgNode leave : e1_lr) {
@@ -285,7 +459,7 @@ public class CfgGraph {
 			Set<CfgNode> e1_lr = getAllLeaves(e1_nr);
 			Set<CfgNode> e2_nr = createCfg(e2_t);
 			Set<CfgNode> e2_lr = getAllLeaves(e2_nr);
-			CfgNode _Gte_nb = new CfgNode(_Gte_t);
+			CfgNode _Gte_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Gte_lb = _Gte_nb.getLeaves();
 			result.addAll(e1_nr);
 			for (CfgNode leave : e1_lr) {
@@ -299,7 +473,7 @@ public class CfgGraph {
 			IStrategoTerm e_t = Helpers.at(term, 0);
 			Set<CfgNode> e_nr = createCfg(e_t);
 			Set<CfgNode> e_lr = getAllLeaves(e_nr);
-			CfgNode _Print_nb = new CfgNode(_Print_t);
+			CfgNode _Print_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Print_lb = _Print_nb.getLeaves();
 			result.addAll(e_nr);
 			for (CfgNode leave : e_lr) {
@@ -307,37 +481,37 @@ public class CfgGraph {
 			}
 		} else if (TermUtils.isAppl(term) && (M.appl(term).getName().equals("Malloc") && term.getSubtermCount() == 0)) {
 			IStrategoTerm _Malloc_t = term;
-			CfgNode _Malloc_nb = new CfgNode(_Malloc_t);
+			CfgNode _Malloc_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Malloc_lb = _Malloc_nb.getLeaves();
 			result.add(_Malloc_nb);
 		} else if (TermUtils.isAppl(term) && (M.appl(term).getName().equals("Free") && term.getSubtermCount() == 1)) {
 			IStrategoTerm _Free_t = term;
-			CfgNode _Free_nb = new CfgNode(_Free_t);
+			CfgNode _Free_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Free_lb = _Free_nb.getLeaves();
 			result.add(_Free_nb);
 		} else if (TermUtils.isAppl(term) && (M.appl(term).getName().equals("Int") && term.getSubtermCount() == 1)) {
 			IStrategoTerm _Int_t = term;
-			CfgNode _Int_nb = new CfgNode(_Int_t);
+			CfgNode _Int_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Int_lb = _Int_nb.getLeaves();
 			result.add(_Int_nb);
 		} else if (TermUtils.isAppl(term) && (M.appl(term).getName().equals("True") && term.getSubtermCount() == 0)) {
 			IStrategoTerm _True_t = term;
-			CfgNode _True_nb = new CfgNode(_True_t);
+			CfgNode _True_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _True_lb = _True_nb.getLeaves();
 			result.add(_True_nb);
 		} else if (TermUtils.isAppl(term) && (M.appl(term).getName().equals("False") && term.getSubtermCount() == 0)) {
 			IStrategoTerm _False_t = term;
-			CfgNode _False_nb = new CfgNode(_False_t);
+			CfgNode _False_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _False_lb = _False_nb.getLeaves();
 			result.add(_False_nb);
 		} else if (TermUtils.isAppl(term) && (M.appl(term).getName().equals("Ref") && term.getSubtermCount() == 1)) {
 			IStrategoTerm _Ref_t = term;
-			CfgNode _Ref_nb = new CfgNode(_Ref_t);
+			CfgNode _Ref_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Ref_lb = _Ref_nb.getLeaves();
 			result.add(_Ref_nb);
 		} else if (TermUtils.isAppl(term) && (M.appl(term).getName().equals("Deref") && term.getSubtermCount() == 1)) {
 			IStrategoTerm _Deref_t = term;
-			CfgNode _Deref_nb = new CfgNode(_Deref_t);
+			CfgNode _Deref_nb = new CfgNode(getTermNodeId(term));
 			Set<CfgNode> _Deref_lb = _Deref_nb.getLeaves();
 			result.add(_Deref_nb);
 		} else {
@@ -345,4 +519,12 @@ public class CfgGraph {
 		}
 		return result;
 	}
+	
+	public static CfgNodeId getTermNodeId(IStrategoTerm n) {
+		if (n.getAnnotations().size() == 0) return null;
+		assert TermUtils.isAppl(n.getAnnotations().getSubterm(0), "FlockNodeId", 1);
+		IStrategoInt id = (IStrategoInt) n.getAnnotations().getSubterm(0).getSubterm(0);
+		return new CfgNodeId(id.intValue());
+	}
+
 }

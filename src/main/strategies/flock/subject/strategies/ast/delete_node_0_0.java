@@ -16,9 +16,9 @@ import flock.subject.common.SetUtils;
 
 import org.spoofax.terms.ParseError;
 
-public class replace_node_0_2 extends Strategy {
+public class delete_node_0_0 extends Strategy {
 	
-	public static replace_node_0_2 instance = new replace_node_0_2();
+	public static delete_node_0_0 instance = new delete_node_0_0();
 	
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm oldId, IStrategoTerm newNode) {

@@ -1,5 +1,6 @@
 package flock.subject.strategies.analysis;
 
+import org.spoofax.interpreter.terms.IStrategoInt;
 import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.interpreter.terms.ITermFactory;
 import org.spoofax.terms.io.TAFTermReader;
@@ -17,7 +18,9 @@ import org.strategoxt.lang.Context;
 import org.strategoxt.lang.Strategy;
 
 import flock.subject.common.CfgNode;
+import flock.subject.common.CfgNodeId;
 import flock.subject.common.SetUtils;
+import flock.subject.strategies.Program;
 
 import org.spoofax.terms.ParseError;
 import org.spoofax.terms.Term;
@@ -30,10 +33,11 @@ public class get_alias_set_0_1 extends Strategy {
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm name) {
         ITermFactory factory = context.getFactory();
         
-        CfgNode c = analyse_program_0_0.instance.getCFGNode(current);
+        IStrategoInt id = (IStrategoInt) current;
+        
+        CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
+        
         if (c == null) {
-             context.getIOAgent().printError(current.toString());
-             context.getIOAgent().printError(name.toString());
         	 return null;
         }
         
