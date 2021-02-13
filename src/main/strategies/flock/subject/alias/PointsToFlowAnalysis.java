@@ -41,10 +41,11 @@ public class PointsToFlowAnalysis {
 		performDataAnalysis(graph);
 		System.out.println(graph.toGraphviz());
 	}
-
-	public static void initCfgNode(CfgNode node) {
+	public static void initNodeValue(CfgNode node) {
 		node.addProperty("locations", Lattices.LocationMap);
 		node.getProperty("locations").value = node.getProperty("locations").lattice.bottom();
+	}
+	public static void initNodeTransferFunction(CfgNode node) {
 		{
 			if (true) {
 				node.getProperty("locations").transfer = TransferFunctions.TransferFunction0;
@@ -82,12 +83,36 @@ public class PointsToFlowAnalysis {
 	}
 	
 	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset) {
+		performDataAnalysis(roots, nodeset, new HashSet<CfgNode>());
+	}
+
+	public static void updateDataAnalysis(Set<CfgNode> news, Set<CfgNode> dirty) {
+		performDataAnalysis(new HashSet<CfgNode>(), news, dirty);
+	}
+
+	public static void updateDataAnalysis(Set<CfgNode> news, Set<CfgNode> dirty, long intervalBoundary) {
+		performDataAnalysis(new HashSet<CfgNode>(), news, dirty, intervalBoundary);
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset, Set<CfgNode> dirty) {
+		performDataAnalysis(roots, nodeset, dirty, Long.MAX_VALUE);
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset, Set<CfgNode> dirty, long intervalBoundary) {
 		Queue<CfgNode> worklist = new LinkedBlockingQueue<>();
 		HashSet<CfgNode> inWorklist = new HashSet<>();
 		for (CfgNode node : nodeset) {
+			if (node.interval > intervalBoundary) continue;
 			worklist.add(node);
 			inWorklist.add(node);
-			initCfgNode(node);
+			initNodeValue(node);
+			initNodeTransferFunction(node);
+		}
+		for (CfgNode node : dirty) {
+			if (node.interval > intervalBoundary) continue;
+			worklist.add(node);
+			inWorklist.add(node);
+			initNodeTransferFunction(node);
 		}
 		for (CfgNode root : roots) {
 			root.getProperty("locations").value = root.getProperty("locations").init.eval(root);
@@ -95,8 +120,10 @@ public class PointsToFlowAnalysis {
 		while (!worklist.isEmpty()) {
 			CfgNode node = worklist.poll();
 			inWorklist.remove(node);
+			if (node.interval > intervalBoundary) continue;
 			Object locations_n = node.getProperty("locations").transfer.eval(node);
 			for (CfgNode successor : node.children) {
+				if (successor.interval > intervalBoundary) continue;
 				boolean changed = false;
 				Object locations_o = successor.getProperty("locations").value;
 				if (node.getProperty("locations").lattice.nleq(locations_n, locations_o)) {
@@ -110,6 +137,7 @@ public class PointsToFlowAnalysis {
 				}
 			}
 			for (CfgNode successor : node.parents) {
+				if (successor.interval > intervalBoundary) continue;
 				boolean changed = false;
 				if (changed && !inWorklist.contains(successor)) {
 					worklist.add(successor);

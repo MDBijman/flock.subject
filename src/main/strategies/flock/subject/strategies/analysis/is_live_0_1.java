@@ -33,14 +33,14 @@ public class is_live_0_1 extends Strategy {
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm name) {
         ITermFactory factory = context.getFactory();
-        
-        
         IStrategoInt id = (IStrategoInt) current;
+        
+        Program.instance.graph.updateLiveUntilBoundary(new CfgNodeId(id.intValue()));
         
         CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
 
         if (c == null) {
-        	context.getIOAgent().printError("CfgNode is null with id " + id.intValue());
+        	//Program.printDebug("CfgNode is null with id " + id.intValue());
         	return current;
         }
         
@@ -48,11 +48,9 @@ public class is_live_0_1 extends Strategy {
         for (LivenessValue lv : (HashSet<LivenessValue>) c.getProperty("live").value) {
 			names.add(lv.name);
         }
-        //context.getIOAgent().printError(debug);
         
         boolean isLess = c.getProperty("live").lattice.leq(SetUtils.create(((IStrategoString) name).stringValue()), names);
-        context.getIOAgent().printError("[is-live] " + name.toString() + " is-live: " + isLess + " at " + current.toString());
-        //context.getIOAgent().printError(c.getProperty("live").value.toString());
+        //Program.printDebug("[is-live] " + name.toString() + " is-live: " + isLess + " at " + current.toString());
         
         return isLess ? current : null;
     }

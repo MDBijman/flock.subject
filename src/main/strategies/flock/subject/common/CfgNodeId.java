@@ -29,4 +29,9 @@ public class CfgNodeId {
 	public int hashCode() {
 		return new Long(id).hashCode();
 	}
+	
+	@Override
+	public String toString() {
+		return id + "";
+	}
 }

@@ -25,7 +25,7 @@ public class update_0_0 extends Strategy {
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm program) {
         ITermFactory factory = context.getFactory();
-		context.getIOAgent().printError("[update]");
+        //Program.printDebug("[update]");
 		Program.instance.update(context, program);
 
         return program;

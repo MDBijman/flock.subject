@@ -24,6 +24,7 @@ public class Program {
 	public void createControlFlowGraph(Context context, IStrategoTerm current) {
 		this.io = context.getIOAgent();
 		this.graph = CfgGraph.createControlFlowGraph(current);
+		io.printError(graph.toGraphviz().replace("\n", "\t"));
 		initPosition(graph, context.getFactory());		
 	}
 	
@@ -62,6 +63,10 @@ public class Program {
 
 	public void update(Context context, IStrategoTerm program) {
 		graph.update(context, program);
+	}
+	
+	public static void printDebug(String t) {
+		instance.io.printError(t);
 	}
 }
 

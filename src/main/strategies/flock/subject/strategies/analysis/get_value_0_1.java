@@ -20,14 +20,16 @@ public class get_value_0_1 extends Strategy {
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm name) {
         ITermFactory factory = context.getFactory();
-        
         IStrategoInt id = (IStrategoInt) current;
         
+        Program.printDebug("[get-value] " + name.toString());
+        
+        Program.instance.graph.updateValueUntilBoundary(new CfgNodeId(id.intValue()));        
         CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
         
         if (c == null) {
-             context.getIOAgent().printError("null node");
-        	 return null;
+        	Program.printDebug("null node");
+        	return null;
         }
         
         if (c.properties.containsKey("values")) {
@@ -36,12 +38,14 @@ public class get_value_0_1 extends Strategy {
             if (values.containsKey(((IStrategoString) name).stringValue())) {
                 Object val = values.get(((IStrategoString) name).stringValue());
                 IStrategoTerm sval = ((ValueValue)val).value;
+                Program.printDebug(sval.toString());
                 return sval;
             } else {
+            	Program.printDebug("null value");
             	return null;
             }
         } else {
-            context.getIOAgent().printError("null value property");
+        	Program.printDebug("null value property");
         	return null;
         }
     }

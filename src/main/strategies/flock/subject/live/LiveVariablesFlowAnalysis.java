@@ -52,9 +52,11 @@ public class LiveVariablesFlowAnalysis {
 		System.out.println(graph.toGraphviz());
 	}
 
-	public static void initCfgNode(CfgNode node) {
+	public static void initNodeValue(CfgNode node) {
 		node.addProperty("live", Lattices.MaySet);
 		node.getProperty("live").value = node.getProperty("live").lattice.bottom();
+	}
+	public static void initNodeTransferFunction(CfgNode node) {
 		{
 			if (true) {
 				node.getProperty("live").transfer = TransferFunctions.TransferFunction0;
@@ -94,24 +96,51 @@ public class LiveVariablesFlowAnalysis {
 	public static void performDataAnalysis(CfgGraph graph) {
 		performDataAnalysis(graph.roots, graph.flatten());
 	}
-	
+
 	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset) {
+		performDataAnalysis(roots, nodeset, new HashSet<CfgNode>());
+	}
+
+	public static void updateDataAnalysis(Set<CfgNode> news, Set<CfgNode> dirty) {
+		performDataAnalysis(new HashSet<CfgNode>(), news, dirty);
+	}
+
+	public static void updateDataAnalysis(Set<CfgNode> news, Set<CfgNode> dirty, long intervalBoundary) {
+		performDataAnalysis(new HashSet<CfgNode>(), news, dirty, intervalBoundary);
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset, Set<CfgNode> dirty) {
+		performDataAnalysis(roots, nodeset, dirty, Long.MIN_VALUE);
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset, Set<CfgNode> dirty, long intervalBoundary) {
 		Queue<CfgNode> worklist = new LinkedBlockingQueue<>();
 		HashSet<CfgNode> inWorklist = new HashSet<>();
 		for (CfgNode node : nodeset) {
+			if (node.interval < intervalBoundary) continue;
 			worklist.add(node);
 			inWorklist.add(node);
-			initCfgNode(node);
+			initNodeValue(node);
+			initNodeTransferFunction(node);
+		}
+		for (CfgNode node : dirty) {
+			if (node.interval < intervalBoundary) continue;
+			worklist.add(node);
+			inWorklist.add(node);
+			initNodeTransferFunction(node);
 		}
 		for (CfgNode root : roots) {
+			if (root.interval < intervalBoundary) continue;
 			root.getProperty("live").value = root.getProperty("live").init.eval(root);
 		}
 		while (!worklist.isEmpty()) {
 			CfgNode node = worklist.poll();
 			inWorklist.remove(node);
+			if (node.interval < intervalBoundary) continue;
 			Object live_n = node.getProperty("live").transfer.eval(node);
 			
 			for (CfgNode successor : node.children) {
+				if (successor.interval < intervalBoundary) continue;
 				boolean changed = false;
 				if (changed && !inWorklist.contains(successor)) {
 					worklist.add(successor);
@@ -119,6 +148,7 @@ public class LiveVariablesFlowAnalysis {
 				}
 			}
 			for (CfgNode successor : node.parents) {
+				if (successor.interval < intervalBoundary) continue;
 				boolean changed = false;
 				Object live_o = successor.getProperty("live").value;
 				if (node.getProperty("live").lattice.nleq(live_n, live_o)) {
@@ -132,9 +162,6 @@ public class LiveVariablesFlowAnalysis {
 			}
 		}	
 	}
-
-	
-
 }
 
 class Lattices {

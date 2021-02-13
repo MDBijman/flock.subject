@@ -32,9 +32,9 @@ public class get_alias_set_0_1 extends Strategy {
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm name) {
         ITermFactory factory = context.getFactory();
-        
         IStrategoInt id = (IStrategoInt) current;
         
+        Program.instance.graph.updateAliasUntilBoundary(new CfgNodeId(id.intValue())); 
         CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
         
         if (c == null) {
@@ -52,7 +52,7 @@ public class get_alias_set_0_1 extends Strategy {
                 // Check other values if same location appears
                 for (Entry<Object, Object> e : values.entrySet()) {
                 	if (!e.getKey().equals(name) && e.getValue().equals(val)) {
-                        context.getIOAgent().printError(name.toString() + " get-alias-set: " + true + " at " + current.toString());
+                        //Program.printDebug(name.toString() + " get-alias-set: " + true + " at " + current.toString());
 
                         aliasSet.add((IStrategoTerm) e.getKey()); 
                     }
@@ -60,11 +60,11 @@ public class get_alias_set_0_1 extends Strategy {
                 
                 return factory.makeList(aliasSet);
             } else {
-                context.getIOAgent().printError("[get-alias-set] null key");
+                //context.getIOAgent().printError("[get-alias-set] null key");
             	return null;
             }
         } else {
-            context.getIOAgent().printError("[get-alias-set] null value property");
+            //context.getIOAgent().printError("[get-alias-set] null value property");
         	return null;
         }
     }

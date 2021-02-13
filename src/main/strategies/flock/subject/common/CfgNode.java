@@ -42,12 +42,22 @@ public class CfgNode {
 		properties = new HashMap<>();
 		this.id = id;
 	}
+	
+	public CfgNode(CfgNodeId id, IStrategoTerm term) {
+		children = new HashSet<>();
+		parents = new HashSet<>();
+		properties = new HashMap<>();
+		this.id = id;
+		this.term = term;
+		this.interval = Long.MAX_VALUE;
+	}
 
 	public HashMap<String, Property> properties;
 	public Set<CfgNode> children;
 	public Set<CfgNode> parents;
 	public CfgNodeId id;
 	public IStrategoTerm term;
+	public long interval;
 
 	public void addProperty(String name, Lattice lat) {
 		properties.put(name, new Property(name, lat));
@@ -109,5 +119,10 @@ public class CfgNode {
 			}
 		}
 		return leaves;
+	}
+	
+	@Override
+	public String toString() {
+		return "CfgNode(" + this.term.toString(2) + ")";
 	}
 }

@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Queue;
@@ -35,18 +36,21 @@ import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
+import flock.subject.live.LivenessValue;
+import flock.subject.strategies.Program;
 
 public class ValueFlowAnalysis {
 	public static void main(String[] args) throws IOException {
-		IStrategoTerm ast = new TAFTermReader(new TermFactory()).parseFromFile("snippets/fls/test.aterm");
+		IStrategoTerm ast = new TAFTermReader(new TermFactory()).parseFromFile("snippets/c/many_while.aterm");
 		CfgGraph graph = CfgGraph.createControlFlowGraph(ast);
 		performDataAnalysis(graph);
 		System.out.println(graph.toGraphviz());
 	}
-
-	public static void initCfgNode(CfgNode node) {
+	public static void initNodeValue(CfgNode node) {
 		node.addProperty("values", Lattices.Environment);
 		node.getProperty("values").value = node.getProperty("values").lattice.bottom();
+	}
+	public static void initNodeTransferFunction(CfgNode node) {
 		{
 			if (true) {
 				node.getProperty("values").transfer = TransferFunctions.TransferFunction0;
@@ -82,12 +86,38 @@ public class ValueFlowAnalysis {
 	}
 	
 	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset) {
+		performDataAnalysis(roots, nodeset, new HashSet<CfgNode>());
+	}
+
+	public static void updateDataAnalysis(Set<CfgNode> news, Set<CfgNode> dirty) {
+		performDataAnalysis(new HashSet<CfgNode>(), news, dirty);
+	}
+
+	public static void updateDataAnalysis(Set<CfgNode> news, Set<CfgNode> dirty, long intervalBoundary) {
+		performDataAnalysis(new HashSet<CfgNode>(), news, dirty, intervalBoundary);
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset, Set<CfgNode> dirty) {
+		performDataAnalysis(roots, nodeset, dirty, Long.MAX_VALUE);
+	}
+	
+	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset, Set<CfgNode> dirty, long intervalBoundary) {
 		Queue<CfgNode> worklist = new LinkedBlockingQueue<>();
 		HashSet<CfgNode> inWorklist = new HashSet<>();
 		for (CfgNode node : nodeset) {
+			if (node.interval > intervalBoundary) continue;
+
 			worklist.add(node);
 			inWorklist.add(node);
-			initCfgNode(node);
+			initNodeValue(node);
+			initNodeTransferFunction(node);
+		}
+		for (CfgNode node : dirty) {
+			if (node.interval > intervalBoundary) continue;
+			
+			worklist.add(node);
+			inWorklist.add(node);
+			initNodeTransferFunction(node);
 		}
 		for (CfgNode root : roots) {
 			root.getProperty("values").value = root.getProperty("values").init.eval(root);
@@ -95,9 +125,13 @@ public class ValueFlowAnalysis {
 		while (!worklist.isEmpty()) {
 			CfgNode node = worklist.poll();
 			inWorklist.remove(node);
+			
+			if (node.interval > intervalBoundary) continue;
+			
 			Object values_n = node.getProperty("values").transfer.eval(node);
 			
 			for (CfgNode successor : node.children) {
+				if (successor.interval > intervalBoundary) continue;
 				boolean changed = false;
 				Object values_o = successor.getProperty("values").value;
 				if (node.getProperty("values").lattice.nleq(values_n, values_o)) {
@@ -109,11 +143,12 @@ public class ValueFlowAnalysis {
 					inWorklist.add(successor);
 				}
 			}
-			for (CfgNode successor : node.parents) {
+			for (CfgNode predecessor : node.parents) {
+				if (predecessor.interval > intervalBoundary) continue;
 				boolean changed = false;
-				if (changed && !inWorklist.contains(successor)) {
-					worklist.add(successor);
-					inWorklist.add(successor);
+				if (changed && !inWorklist.contains(predecessor)) {
+					worklist.add(predecessor);
+					inWorklist.add(predecessor);
 				}
 			}
 		}
