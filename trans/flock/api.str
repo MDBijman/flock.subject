@@ -10,6 +10,8 @@ strategies
   
   add-id-annotation: t -> t { FlockNodeId(<make-id>) }
 
+  flock-debug: t -> t where <debug> t
+
 strategies
 
   flock-analyse-program = analyse-program
@@ -25,7 +27,7 @@ strategies
   flock-get-value(|name): node {FlockNodeId(n)} -> <get-value(|name)> n
   external get-value(|n)
   
-  flock-replace-node(|old): new -> <add-id-annotation; replace-node(|old)> new
+  flock-replace-node(|old): new -> <flock-add-id; replace-node(|old)> new
   external replace-node(|n)
   
   flock-update: program -> <update> program
