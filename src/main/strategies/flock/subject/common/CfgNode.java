@@ -1,9 +1,12 @@
 package flock.subject.common;
 
+import org.apache.commons.lang3.tuple.Pair;
+import org.strategoxt.lang.Context;
 import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.interpreter.terms.IStrategoAppl;
 import org.spoofax.interpreter.terms.IStrategoTuple;
 import org.spoofax.interpreter.terms.IStrategoList;
+import org.spoofax.interpreter.terms.IStrategoInt;
 import org.spoofax.terms.io.TAFTermReader;
 import org.spoofax.terms.TermFactory;
 import java.io.IOException;
@@ -13,9 +16,13 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Stack;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Queue;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Collection;
 import java.util.function.Supplier;
@@ -27,22 +34,34 @@ import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
 import flock.subject.common.CfgGraph;
 import flock.subject.common.CfgNode;
+import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
 import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
+import flock.subject.live.LivenessValue;
+import flock.subject.live.LiveVariablesFlowAnalysis;
+import flock.subject.alias.PointsToFlowAnalysis;
+import flock.subject.value.ValueFlowAnalysis;
+import flock.subject.value.ValueValue;
 
 public class CfgNode {
-	
+	public HashMap<String, Property> properties;
+	public Set<CfgNode> children;
+	public Set<CfgNode> parents;
+	public CfgNodeId id;
+	public IStrategoTerm term;
+	public long interval;
+
 	public CfgNode(CfgNodeId id) {
 		children = new HashSet<>();
 		parents = new HashSet<>();
 		properties = new HashMap<>();
 		this.id = id;
 	}
-	
+
 	public CfgNode(CfgNodeId id, IStrategoTerm term) {
 		children = new HashSet<>();
 		parents = new HashSet<>();
@@ -51,13 +70,6 @@ public class CfgNode {
 		this.term = term;
 		this.interval = Long.MAX_VALUE;
 	}
-
-	public HashMap<String, Property> properties;
-	public Set<CfgNode> children;
-	public Set<CfgNode> parents;
-	public CfgNodeId id;
-	public IStrategoTerm term;
-	public long interval;
 
 	public void addProperty(String name, Lattice lat) {
 		properties.put(name, new Property(name, lat));
@@ -110,7 +122,7 @@ public class CfgNode {
 	private Set<CfgNode> getLeaves(Set<CfgNode> visited) {
 		Set<CfgNode> leaves = new HashSet<>();
 		visited.add(this);
-		Set<CfgNode> filteredChildren = children.stream().filter(x -> !visited.contains(x)).collect(Collectors.toSet());
+		Set<CfgNode> filteredChildren = children.stream().filter(v -> !visited.contains(v)).collect(Collectors.toSet());
 		if (filteredChildren.isEmpty()) {
 			leaves.add(this);
 		} else {
@@ -120,7 +132,7 @@ public class CfgNode {
 		}
 		return leaves;
 	}
-	
+
 	@Override
 	public String toString() {
 		return "CfgNode(" + this.term.toString(2) + ")";

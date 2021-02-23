@@ -22,9 +22,9 @@ public class get_value_0_1 extends Strategy {
         ITermFactory factory = context.getFactory();
         IStrategoInt id = (IStrategoInt) current;
         
-        Program.printDebug("[get-value] " + name.toString());
+        //Program.printDebug("[get-value] " + name.toString());
         
-        Program.instance.graph.updateValueUntilBoundary(new CfgNodeId(id.intValue()));        
+        Program.instance.graph.analysis.updateUntilBoundary_values(Program.instance.graph.idToInterval, new CfgNodeId(id.intValue()));        
         CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
         
         if (c == null) {
@@ -38,10 +38,9 @@ public class get_value_0_1 extends Strategy {
             if (values.containsKey(((IStrategoString) name).stringValue())) {
                 Object val = values.get(((IStrategoString) name).stringValue());
                 IStrategoTerm sval = ((ValueValue)val).value;
-                Program.printDebug(sval.toString());
                 return sval;
             } else {
-            	Program.printDebug("null value");
+            	//Program.printDebug("null value");
             	return null;
             }
         } else {

@@ -10,7 +10,8 @@ strategies
   
   add-id-annotation: t -> t { FlockNodeId(<make-id>) }
 
-  flock-debug: t -> t where <debug> t
+  flock-debug: t -> t //where <debug> t
+  flock-debug-graph: t -> t where <debug-graph> t
 
 strategies
 
@@ -39,4 +40,6 @@ strategies
   //external get-program(|)
 
   external make-id(|)
+  
+  external debug-graph(|)
   

@@ -10,14 +10,14 @@ signature
 strategies 
 
   optimize-program: p -> p'
-  where (p', t) := <profile(optimize-program')> p ; <debug> t
+  where (p', t) := <profile(optimize-program'; flock-debug-graph)> p ; <debug> t
 
   optimize-program': p -> p''
     with
      p' := <flock-add-id> p
-    ; <flock-debug> p'
+    //; <flock-debug> p'
     ; <flock-analyse-program> p'
-    ; p'' := <fixpoint-opt(optimize-program-inner | 3000)> p'
+    ; p'' := <fixpoint-opt(optimize-program-inner | 5000)> p'
 
   fixpoint-opt(s|0) = id
   fixpoint-opt(s|bound): p -> <s < (fixpoint-opt(s | <dec> bound)) + id> p

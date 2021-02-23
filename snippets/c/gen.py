@@ -117,6 +117,6 @@ def gen_large_expr(n):
 gen_many_loops()
 gen_many_vars(100)
 gen_many_vars2(100)
-gen_many_branch(10)
+gen_many_branch(100)
 
 gen_large_expr(40)

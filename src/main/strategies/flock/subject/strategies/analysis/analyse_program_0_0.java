@@ -27,14 +27,14 @@ public class analyse_program_0_0 extends Strategy {
 		
 		try {
 			
-			
 			context.getIOAgent().printError("Start Analysis");
 			context.getIOAgent().printError("Creating CFG");
 			
 			Program.instance.createControlFlowGraph(context, current);
 			
 			Program.instance.update(context, current);
-
+			//Program.printDebug(Program.instance.graph.toGraphviz().replace("\n", "\t"));
+			
 			context.getIOAgent().printError("Running value analysis");
 			
 			Program.instance.runValueAnalysis();

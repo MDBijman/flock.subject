@@ -18,17 +18,14 @@ import flock.subject.strategies.analysis.analyse_program_0_0;
 
 import org.spoofax.terms.ParseError;
 
-public class update_0_0 extends Strategy {
+public class debug_graph_0_0 extends Strategy {
 	
-	public static update_0_0 instance = new update_0_0();
+	public static debug_graph_0_0 instance = new debug_graph_0_0();
 	
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm program) {
-        ITermFactory factory = context.getFactory();
-        
-        //Program.printDebug("[update]");
-        //Program.printDebug(Program.instance.graph.toGraphviz().replace("\n", "\t"));
-		Program.instance.update(context, program);
+        Program.printDebug("[debug-graph]");
+        Program.printDebug(Program.instance.graph.toGraphviz().replace("\n", "\t"));
 
         return program;
     }

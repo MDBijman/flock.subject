@@ -1,22 +1,28 @@
 package flock.subject.common;
 
+import org.apache.commons.lang3.tuple.Pair;
+import org.strategoxt.lang.Context;
 import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.interpreter.terms.IStrategoAppl;
 import org.spoofax.interpreter.terms.IStrategoTuple;
 import org.spoofax.interpreter.terms.IStrategoList;
+import org.spoofax.interpreter.terms.IStrategoInt;
 import org.spoofax.terms.io.TAFTermReader;
 import org.spoofax.terms.TermFactory;
 import java.io.IOException;
 import org.spoofax.terms.util.M;
 import org.spoofax.terms.util.TermUtils;
-
 import java.util.HashSet;
 import java.util.Set;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Stack;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Queue;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Collection;
 import java.util.function.Supplier;
@@ -26,6 +32,20 @@ import org.spoofax.terms.StrategoConstructor;
 import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
+import flock.subject.common.CfgGraph;
+import flock.subject.common.CfgNode;
+import flock.subject.common.CfgNodeId;
+import flock.subject.common.Helpers;
+import flock.subject.common.Lattice;
+import flock.subject.common.MapUtils;
+import flock.subject.common.SetUtils;
+import flock.subject.common.TransferFunction;
+import flock.subject.common.UniversalSet;
+import flock.subject.live.LivenessValue;
+import flock.subject.live.LiveVariablesFlowAnalysis;
+import flock.subject.alias.PointsToFlowAnalysis;
+import flock.subject.value.ValueFlowAnalysis;
+import flock.subject.value.ValueValue;
 
 public class SetUtils {
 	public static Set create(Object... terms) {
@@ -58,9 +78,9 @@ public class SetUtils {
 			return ls;
 		}
 		Set result = new HashSet();
-		for (Object e : ls) {
-			if (rs.contains(e)) {
-				result.add(e);
+		for (Object i : ls) {
+			if (rs.contains(i)) {
+				result.add(i);
 			}
 		}
 		return result;
@@ -70,9 +90,9 @@ public class SetUtils {
 		Set ls = (Set) l;
 		Set rs = (Set) r;
 		Set result = new HashSet();
-		for (Object e : ls) {
-			if (!rs.contains(e)) {
-				result.add(e);
+		for (Object i : ls) {
+			if (!rs.contains(i)) {
+				result.add(i);
 			}
 		}
 		return result;
@@ -87,8 +107,8 @@ public class SetUtils {
 		if (rs instanceof UniversalSet) {
 			return true;
 		}
-		for (Object e : ls) {
-			if (!rs.contains(e)) {
+		for (Object i : ls) {
+			if (!rs.contains(i)) {
 				return false;
 			}
 		}
@@ -104,8 +124,8 @@ public class SetUtils {
 		if (rs instanceof UniversalSet) {
 			return false;
 		}
-		for (Object e : rs) {
-			if (!ls.contains(e)) {
+		for (Object i : rs) {
+			if (!ls.contains(i)) {
 				return false;
 			}
 		}
