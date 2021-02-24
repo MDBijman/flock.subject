@@ -54,6 +54,14 @@ public class CfgNode {
 	public CfgNodeId id;
 	public IStrategoTerm term;
 	public long interval;
+	public boolean isGhost = false;
+	
+	public CfgNode() {
+		children = new HashSet<>();
+		parents = new HashSet<>();
+		properties = new HashMap<>();
+		this.isGhost = true;
+	}
 
 	public CfgNode(CfgNodeId id) {
 		children = new HashSet<>();

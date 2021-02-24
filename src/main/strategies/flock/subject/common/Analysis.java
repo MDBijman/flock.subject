@@ -57,6 +57,7 @@ public class Analysis {
 	public HashSet<CfgNode> dirty_alias;
 	public HashSet<CfgNode> new_alias;
 	public boolean is_forward_alias;
+	private boolean has_run_live = false, has_run_values = false, has_run_alias = false;
 
 	public Analysis() {
 		dirty_live = new HashSet<CfgNode>();
@@ -110,40 +111,55 @@ public class Analysis {
 		new_alias.removeIf(n -> removedIds.contains(n.id));
 	}
 
-	public void updateUntilBoundary_live(HashMap<CfgNodeId, Long> idToInterval, CfgNodeId id) {
-		long boundary = idToInterval.get(id);
+	public void updateUntilBoundary_live(CfgGraph graph, CfgNodeId id) {
+		long boundary = graph.idToInterval.get(id);
 		Set<CfgNode> dirtyNodes = new HashSet<>(dirty_live);
 		for (CfgNode n : dirty_live)
 			dirtyNodes.addAll(getTermDependencies(n));
 		for (CfgNode n : new_live)
 			dirtyNodes.addAll(getTermDependencies(n));
-		LiveVariablesFlowAnalysis.updateDataAnalysis(new_live, dirtyNodes, boundary);
-		dirty_live.removeIf(n -> idToInterval.get(n.id) >= boundary);
-		new_live.removeIf(n -> idToInterval.get(n.id) >= boundary);
+		if (!has_run_live) {
+			LiveVariablesFlowAnalysis.performDataAnalysis(graph.roots, new_live, dirtyNodes, boundary);
+			has_run_live = true;
+		} else {
+			LiveVariablesFlowAnalysis.updateDataAnalysis(new_live, dirtyNodes, boundary);
+		}
+		dirty_live.removeIf(n -> graph.idToInterval.get(n.id) >= boundary);
+		new_live.removeIf(n -> graph.idToInterval.get(n.id) >= boundary);
 	}
 
-	public void updateUntilBoundary_values(HashMap<CfgNodeId, Long> idToInterval, CfgNodeId id) {
-		long boundary = idToInterval.get(id);
+	public void updateUntilBoundary_values(CfgGraph graph, CfgNodeId id) {
+		long boundary = graph.idToInterval.get(id);
 		Set<CfgNode> dirtyNodes = new HashSet<>(dirty_values);
 		for (CfgNode n : dirty_values)
 			dirtyNodes.addAll(getTermDependencies(n));
 		for (CfgNode n : new_values)
 			dirtyNodes.addAll(getTermDependencies(n));
-		ValueFlowAnalysis.updateDataAnalysis(new_values, dirtyNodes, boundary);
-		dirty_values.removeIf(n -> idToInterval.get(n.id) <= boundary);
-		new_values.removeIf(n -> idToInterval.get(n.id) <= boundary);
+		if (!has_run_values) {
+			ValueFlowAnalysis.performDataAnalysis(graph.roots, new_values, dirtyNodes, boundary);
+			has_run_values = true;
+		} else {
+			ValueFlowAnalysis.updateDataAnalysis(new_values, dirtyNodes, boundary);
+		}
+		dirty_values.removeIf(n -> graph.idToInterval.get(n.id) <= boundary);
+		new_values.removeIf(n -> graph.idToInterval.get(n.id) <= boundary);
 	}
 
-	public void updateUntilBoundary_alias(HashMap<CfgNodeId, Long> idToInterval, CfgNodeId id) {
-		long boundary = idToInterval.get(id);
+	public void updateUntilBoundary_alias(CfgGraph graph, CfgNodeId id) {
+		long boundary = graph.idToInterval.get(id);
 		Set<CfgNode> dirtyNodes = new HashSet<>(dirty_alias);
 		for (CfgNode n : dirty_alias)
 			dirtyNodes.addAll(getTermDependencies(n));
 		for (CfgNode n : new_alias)
 			dirtyNodes.addAll(getTermDependencies(n));
-		PointsToFlowAnalysis.updateDataAnalysis(new_alias, dirtyNodes, boundary);
-		dirty_alias.removeIf(n -> idToInterval.get(n.id) <= boundary);
-		new_alias.removeIf(n -> idToInterval.get(n.id) <= boundary);
+		if (!has_run_alias) {
+			PointsToFlowAnalysis.performDataAnalysis(graph.roots, new_alias, dirtyNodes, boundary);
+			has_run_alias = true;
+		} else {
+			PointsToFlowAnalysis.updateDataAnalysis(new_alias, dirtyNodes, boundary);
+		}
+		dirty_alias.removeIf(n -> graph.idToInterval.get(n.id) <= boundary);
+		new_alias.removeIf(n -> graph.idToInterval.get(n.id) <= boundary);
 	}
 
 	public static Set<CfgNode> getTermDependencies(CfgNode n) {

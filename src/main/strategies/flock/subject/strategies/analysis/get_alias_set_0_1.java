@@ -34,7 +34,7 @@ public class get_alias_set_0_1 extends Strategy {
         ITermFactory factory = context.getFactory();
         IStrategoInt id = (IStrategoInt) current;
         
-        Program.instance.graph.analysis.updateUntilBoundary_alias(Program.instance.graph.idToInterval, new CfgNodeId(id.intValue())); 
+        Program.instance.graph.analysis.updateUntilBoundary_alias(Program.instance.graph, new CfgNodeId(id.intValue())); 
         CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
         
         if (c == null) {

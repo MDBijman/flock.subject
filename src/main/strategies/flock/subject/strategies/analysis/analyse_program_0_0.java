@@ -26,27 +26,12 @@ public class analyse_program_0_0 extends Strategy {
         ITermFactory factory = context.getFactory();
 		
 		try {
-			
 			context.getIOAgent().printError("Start Analysis");
 			context.getIOAgent().printError("Creating CFG");
 			
 			Program.instance.createControlFlowGraph(context, current);
 			
-			Program.instance.update(context, current);
-			//Program.printDebug(Program.instance.graph.toGraphviz().replace("\n", "\t"));
-			
-			context.getIOAgent().printError("Running value analysis");
-			
-			Program.instance.runValueAnalysis();
-			
-			context.getIOAgent().printError("Running liveness analysis");
-			
-			Program.instance.runLiveVariableAnalysis();
-		
-			context.getIOAgent().printError("Running points-to analysis");			
-			
-			Program.instance.runPointsToAnalysis();
-			
+			Program.instance.init(context, current);
 
 			
 		} catch (ParseError e) {

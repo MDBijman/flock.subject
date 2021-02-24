@@ -26,7 +26,8 @@ public class debug_graph_0_0 extends Strategy {
 	public IStrategoTerm invoke(Context context, IStrategoTerm program) {
         Program.printDebug("[debug-graph]");
         Program.printDebug(Program.instance.graph.toGraphviz().replace("\n", "\t"));
-
+        Program.printDebug(Program.instance.graph.counters.toString());
+        
         return program;
     }
 }

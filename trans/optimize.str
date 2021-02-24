@@ -15,9 +15,8 @@ strategies
   optimize-program': p -> p''
     with
      p' := <flock-add-id> p
-    //; <flock-debug> p'
     ; <flock-analyse-program> p'
-    ; p'' := <fixpoint-opt(optimize-program-inner | 5000)> p'
+    ; p'' := <fixpoint-opt(optimize-program-inner | 10000)> p'
 
   fixpoint-opt(s|0) = id
   fixpoint-opt(s|bound): p -> <s < (fixpoint-opt(s | <dec> bound)) + id> p
@@ -47,7 +46,7 @@ strategies
   
 strategies
 
-  propagate-constant-read: a@Ref(m) -> Int(v)
+  propagate-constant-read: a@Ref(m) -> Int(<remove-id> v)
   where
     <flock-debug> a
   ; Const(v) := <flock-get-value(|m)> a
@@ -67,7 +66,7 @@ strategies
 
 strategies
 
-  remove-dead-code = fail //remove-empty-block <+ remove-empty-while <+ remove-skip <+ remove-dead-if <+ remove-singleton-block
+  remove-dead-code = fail//remove-empty-block <+ remove-empty-while <+ remove-skip <+ remove-dead-if// <+ remove-singleton-block
 
   remove-empty-block: Block([]) -> Skip()
   where <flock-debug> "removing empty block"
@@ -86,21 +85,19 @@ strategies
     stmts' := <retain-all(not(?Skip))> stmts
   ; <not(equal)> (stmts, stmts')
   where <flock-debug> "removing skips"
-  
-  remove-skip: While(e, stmts) -> While(e, stmts')
-  where
-    stmts' := <retain-all(not(?Skip))> stmts
-  ; <not(equal)> (stmts, stmts')
-  where <flock-debug> "removing skips"
     
-  remove-dead-if: IfThenElse(True, t, e)  -> t
+  remove-dead-if: IfThenElse(True, t, e)  -> <remove-id> t
   where <flock-debug> "removing dead if"
 
-  remove-dead-if: IfThenElse(False, t, e) -> e
+  remove-dead-if: IfThenElse(False, t, e) -> <remove-id> e
   where <flock-debug> "removing dead if"
 
-  remove-singleton-block: Block([s]) -> s
+  remove-dead-if: IfThenElse(e, Skip(), Skip()) -> Skip()
+  where <flock-debug> "removing dead if"
+
+  remove-singleton-block: Block([s]) -> <remove-id> s
   where <flock-debug> "unwrapping statement from block"
 
+  remove-id: s {FlockNodeId(_)} -> s
 
   

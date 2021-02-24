@@ -60,6 +60,11 @@ public class Program {
 	public CfgNodeId nextNodeId() {
 		return CfgGraph.nextNodeId();
 	}
+	
+	public void init(Context context, IStrategoTerm program)
+	{
+		graph.init(context, program);
+	}
 
 	public void update(Context context, IStrategoTerm program) {
 		graph.update(context, program);

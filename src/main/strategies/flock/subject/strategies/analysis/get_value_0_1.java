@@ -21,10 +21,11 @@ public class get_value_0_1 extends Strategy {
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm name) {
         ITermFactory factory = context.getFactory();
         IStrategoInt id = (IStrategoInt) current;
-        
-        //Program.printDebug("[get-value] " + name.toString());
-        
-        Program.instance.graph.analysis.updateUntilBoundary_values(Program.instance.graph.idToInterval, new CfgNodeId(id.intValue()));        
+    
+        long zero = System.currentTimeMillis();
+        Program.instance.graph.analysis.updateUntilBoundary_values(Program.instance.graph, new CfgNodeId(id.intValue()));        
+        Program.instance.graph.counters.put("values", Program.instance.graph.counters.get("values") + (System.currentTimeMillis() - zero));
+
         CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
         
         if (c == null) {
@@ -40,7 +41,7 @@ public class get_value_0_1 extends Strategy {
                 IStrategoTerm sval = ((ValueValue)val).value;
                 return sval;
             } else {
-            	//Program.printDebug("null value");
+            	Program.printDebug("null value");
             	return null;
             }
         } else {
