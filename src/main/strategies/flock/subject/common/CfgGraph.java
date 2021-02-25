@@ -50,30 +50,21 @@ import flock.subject.value.ValueValue;
 
 public class CfgGraph {
 	public Set<CfgNode> roots;
+	private Set<CfgNode> allNodes;
 	public HashMap<CfgNodeId, CfgNode> idToNode;
 	public HashMap<CfgNodeId, IStrategoTerm> idToTerm;
 	public HashMap<CfgNodeId, Long> idToInterval;
 	public Analysis analysis;
 	static private CfgNodeId nextId = new CfgNodeId(0);
 	private boolean debug = true;
-	public HashMap<String, Long> counters;
 
 	public CfgGraph(Set<CfgNode> roots, IStrategoTerm root) {
 		this.roots = roots;
 		this.idToNode = new HashMap<>();
 		this.idToTerm = new HashMap<>();
-		this.counters = new HashMap<>();
-		counters.put("debug", 0L);
-		counters.put("replace", 0L);
-		counters.put("intervals", 0L);
-		counters.put("update", 0L);
-		counters.put("live", 0L);
-		counters.put("values", 0L);
-		counters.put("ghost", 0L);
-		counters.put("replace.facts", 0L);
-		counters.put("replace.cfg", 0L);
 		this.analysis = new Analysis();
-		for (CfgNode n : this.flatten()) {
+		this.allNodes = this.flatten();
+		for (CfgNode n : this.allNodes) {
 			this.idToNode.put(n.id, n);
 		}
 		this.removeGhostNodes();
@@ -83,45 +74,44 @@ public class CfgGraph {
 	
 	private void checkInvariants() {
 		if (debug) {
-			long zero = System.currentTimeMillis();
 			checkIntervals();
 			checkGraph();
-			counters.put("debug", counters.get("debug") + System.currentTimeMillis() - zero);
 		}
 	}
 
 	private void checkIntervals() {
-		for (CfgNode n : this.flatten()) {
+		for (CfgNode n : this.allNodes) {
 			for (CfgNode c : n.children) {
 				assert c.interval >= n.interval;
 				if (c.interval < n.interval) {
-					Program.printDebug("Error in intervals!");
+					Program.log("validation", "Error in intervals!");
 				}
 			}
 		}
 	}
 	
 	private void checkGraph() {
-		for (CfgNode n : this.flatten()) {
+		for (CfgNode n : this.allNodes) {
 			for (CfgNode c : n.children) {
 				if (!c.parents.contains(n)) {
-					Program.printDebug("Error in parent-child!");
+					Program.log("validation", "Error in parent-child!");
 				}
 			}
 			for (CfgNode p : n.parents) {
 				if (!p.children.contains(n)) {
-					Program.printDebug("Error in parent-child!");
+					Program.log("validation", "Error in parent-child!");
 				}
 			}
 		}
 	}
 	
 	private void computeIntervals() {
-		long zero = System.currentTimeMillis();
+		Program.increment("computeIntervals");
+		Program.beginTime("computeIntervals");
 		this.idToInterval = new HashMap<>();
 		Long next_index = new Long(1);
 		Stack<CfgNode> S = new Stack<>();
-		Set<CfgNode> nodes = this.flatten();
+		Set<CfgNode> nodes = this.allNodes;
 		HashSet<CfgNodeId> onStack = new HashSet<>();
 		HashMap<CfgNodeId, Long> lowlink = new HashMap<>();
 		HashMap<CfgNodeId, Long> index = new HashMap<>();
@@ -146,7 +136,7 @@ public class CfgGraph {
 			successors.put(set, new HashSet<>());
 			predecessors.put(set, new HashSet<>());
 		}
-		
+		Program.beginTime("a");
 		for (CfgNode n : nodes) {
 			for (CfgNode c : n.children) {
 				Set<CfgNode> nComponent = nodeComponent.get(n);
@@ -157,21 +147,32 @@ public class CfgGraph {
 				}
 			}
 		}
+		Program.endTime("a");
+		
+		Set<Set<CfgNode>> noOutgoing = new HashSet<>();
+		
+		// Find component with no successors (i.e. no outgoing edge)
+		for (Set<CfgNode> component : components) {
+			if (successors.get(component).isEmpty()) {
+				noOutgoing.add(component);
+			}
+		}
 		
 		long currIndex = components.size() + 1;
 		while (!components.isEmpty()) {
-			Set<CfgNode> c = null;
-			for (Set<CfgNode> component : components) {
-				if (successors.get(component).isEmpty()) {
-					c = component;
-					break;
-				}
+			Set<CfgNode> c = noOutgoing.iterator().next();
+			noOutgoing.remove(c);
+			
+			// Remove component and set interval of its nodes
+			components.remove(c);
+			for (Set<CfgNode> p : predecessors.get(c))
+			{
+				successors.get(p).remove(c);
+				if (successors.get(p).size() == 0) 
+					noOutgoing.add(p);
 			}
 			
-			components.remove(c);
-			for (Entry<Set<CfgNode>, Set<Set<CfgNode>>> s : successors.entrySet()) s.getValue().remove(c);
 			successors.remove(c);
-			for (Entry<Set<CfgNode>, Set<Set<CfgNode>>> s : predecessors.entrySet()) s.getValue().remove(c);
 			predecessors.remove(c);
 			
 			for (CfgNode n : c) {
@@ -180,13 +181,13 @@ public class CfgGraph {
 			currIndex--;
 		}
 		
+
 		// End
 		
 		for (CfgNode n : nodes) {
 			this.idToInterval.put(n.id, n.interval);
 		}
-		
-		counters.put("intervals", counters.get("intervals") + System.currentTimeMillis() - zero);
+		Program.endTime("computeIntervals");
 	}
 
 	private void strongConnect(CfgNode v, Long next_index, Stack<CfgNode> S, HashSet<CfgNodeId> onStack,
@@ -223,17 +224,75 @@ public class CfgGraph {
 		}
 	}
 
-	public void replaceNode(Context context, CfgNode current, IStrategoTerm replacement) {
-		long zeroAll = System.currentTimeMillis();
+	public void removeNode(Context context, IStrategoTerm node)
+	{
+		Program.increment("removeNode");
+		Program.log("api", "removing node " + node.toString());
+		// Nodes outside of the removed id's that have analysis results directly depending on them (static analysis)
+		Set<CfgNode> dependents = new HashSet<>();
 		
-		long zeroRemoveFacts = System.currentTimeMillis();
-		Set<CfgNodeId> removedIds = getAllIds(current.term);
-		Set<CfgNode> dependents = Analysis.getTermDependencies(current);
+		CfgNode currentNode = this.getCfgNode(getTermNodeId(node));
+		if (currentNode != null) {
+			dependents.addAll(Analysis.getTermDependencies(currentNode));
+		}
+
+		// Set of id's that were in the removed node
+		Set<CfgNodeId> removedIds = getAllIds(node);
+		
+		analysis.removeFromDirty(removedIds);
+		analysis.removeFromNew(removedIds);
+		
+		// Add removed id's to that set
 		for (CfgNodeId n : removedIds) {
 			if (idToNode.get(n) != null)
 				dependents.add(idToNode.get(n));
 		}
-		for (CfgNode n : this.flatten()) {
+
+		// Go through graph and remove facts with origin in removed id's
+		for (CfgNode n : this.allNodes) {
+			if (removedIds.contains(n.id)) {
+				n.isGhost = true;
+			} else {
+				boolean changed = false;
+				for (CfgNode d : dependents) {
+					boolean isRemoved = Analysis.removeFact(context, n, d.id);
+					changed |= isRemoved;
+				}
+				if (changed) {
+					analysis.addToDirty(n);
+				}
+			}
+		}
+		
+		// Remove any ghost nodes created by the createCfg call
+		this.removeGhostNodes();
+		// Recompute intervals
+		computeIntervals();
+		// Debug
+		checkInvariants();
+	}
+	
+	public void replaceNode(Context context, IStrategoTerm current, IStrategoTerm replacement) {
+		Program.increment("replaceNode");
+		Program.beginTime("replaceNode");
+		Program.beginTime("replaceNode remove facts");
+		// Nodes outside of the removed id's that have analysis results directly depending on them (static analysis)
+		Set<CfgNode> dependents = new HashSet<>();
+
+		CfgNode currentNode = this.getCfgNode(getTermNodeId(current));
+		if (currentNode != null) {
+			dependents.addAll(Analysis.getTermDependencies(currentNode));
+		}
+
+		// Set of id's that were in the removed node
+		Set<CfgNodeId> removedIds = getAllIds(current);		
+		// Add removed id's to that set
+		for (CfgNodeId n : removedIds) {
+			if (idToNode.get(n) != null)
+				dependents.add(idToNode.get(n));
+		}
+		// Go through graph and remove facts with origin in removed id's
+		for (CfgNode n : this.allNodes) {
 			boolean changed = false;
 			for (CfgNode d : dependents) {
 				boolean isRemoved = Analysis.removeFact(context, n, d.id);
@@ -243,16 +302,34 @@ public class CfgGraph {
 				analysis.addToDirty(n);
 			}
 		}
-		counters.put("replace.facts", counters.get("replace.facts") + System.currentTimeMillis() - zeroRemoveFacts);
+		for (CfgNodeId n : removedIds) {
+			if (idToNode.get(n) != null)
+			{
+				this.allNodes.remove(idToNode.get(n));
+			}
+		}
+		Program.endTime("replaceNode remove facts");
 
-		long zeroPatchCfg = System.currentTimeMillis();
+		// Here we patch the graph
+		Program.beginTime("replaceNode fix cfg");
 		Pair<Set<CfgNode>, Set<CfgNode>> newCfgNodes = createCfg(replacement);
+
 		Set<CfgNode> newHeads = newCfgNodes.getLeft();
 		Set<CfgNode> newLeaves = newCfgNodes.getRight();
 		Set<CfgNode> oldParents = new HashSet<>();
 		Set<CfgNode> oldChildren = new HashSet<>();
-		Set<CfgNode> allCfgNodes = this.flatten();
-		for (CfgNode n : allCfgNodes) {
+		
+		Set<CfgNode> newNodes = new HashSet<>();
+		for (CfgNode n : newHeads) {
+			for (CfgNode c : n.flatten()) {
+				if (!c.isGhost) {
+					analysis.addToNew(c);
+					newNodes.add(c);
+				}
+			}
+		}
+		
+		for (CfgNode n : this.allNodes) {
 			if (removedIds.contains(n.id))
 				continue;
 			if (n.parents.removeIf(c -> removedIds.contains(c.id))) {
@@ -296,27 +373,29 @@ public class CfgGraph {
 				}
 			}
 		}
-		counters.put("replace.cfg", counters.get("replace.cfg") + System.currentTimeMillis() - zeroPatchCfg);
-
+		
+		this.allNodes.addAll(newNodes);
+		Program.endTime("replaceNode fix cfg");
+		
+		// Remove any ghost nodes created by the createCfg call
 		this.removeGhostNodes();
+		// Recompute intervals
 		computeIntervals();
+		// Debug
 		checkInvariants();
-		for (CfgNode n : newHeads) {
-			analysis.addToNew(n);
-		}
-	
-		counters.put("replace", counters.get("replace") + System.currentTimeMillis() - zeroAll);
+
+		Program.endTime("replaceNode");
 	}
 
 	public void init(Context context, IStrategoTerm program) {
-		for (CfgNode n : this.flatten()) {
+		for (CfgNode n : this.allNodes) {
 			analysis.addToNew(n);
 		}
 		update(context, program);
 	}
 	
 	public void update(Context context, IStrategoTerm program) {
-		long zero = System.currentTimeMillis();
+		Program.beginTime("update");
 		updateTermMap(program);
 		for (Set<CfgNode> a : analysis.getDirtySets()) {
 			for (CfgNode n : a)
@@ -330,9 +409,13 @@ public class CfgGraph {
 			entry.getValue().term = idToTerm.get(entry.getKey());
 		}
 		for (Entry<CfgNodeId, Long> entry : this.idToInterval.entrySet()) {
+			if (idToNode.get(entry.getKey()) == null) {
+				Program.log("validation", entry.toString());
+				Program.log("validation", this.toGraphviz().replace('\n', '\t'));
+			}
 			idToNode.get(entry.getKey()).interval = entry.getValue();
 		}
-		counters.put("update", counters.get("update") + System.currentTimeMillis() - zero);
+		Program.endTime("update");
 	}
 
 	private void updateTermMap(IStrategoTerm program) {
@@ -376,32 +459,36 @@ public class CfgGraph {
 	}
 
 	public String toGraphviz() {
+		Program.beginTime("graphviz");
 		StringBuilder result = new StringBuilder();
 		result.append("digraph G {\n");
-		Set<CfgNode> allNodes = flatten();
-		for (CfgNode node : allNodes) {
-			Property h = node.properties.get("values");
+		for (CfgNode node : this.allNodes) {
+			Property h = node.properties.get("live");
+			String termString = node.term.toString(2);
 			String propString = h == null ? " " : (h.value == null ? "" : " " + h.value.toString() + " ");
-			result.append(node.hashCode() + "[label=\"" + node.id.getId() + " " + node.term
+			result.append(node.hashCode() + "[label=\"" + node.id.getId() + " " + termString
 					.toString().replace("\\", "\\\\").replace("\t", "\\t").replace("\b", "\\b").replace("\n", "\\n")
 					.replace("\r", "\\r").replace("\f", "\\f").replace("\'", "\\'").replace("\"", "\\\"") + " "
-					+ node.interval + " "
-					+ propString.replace("\\", "\\\\").replace("\t", "\\t").replace("\b", "\\b").replace("\n", "\\n")
-							.replace("\r", "\\r").replace("\f", "\\f").replace("\'", "\\'").replace("\"", "\\\"")
+					//+ node.interval + " "
+					//+ propString.replace("\\", "\\\\").replace("\t", "\\t").replace("\b", "\\b").replace("\n", "\\n")
+					//		.replace("\r", "\\r").replace("\f", "\\f").replace("\'", "\\'").replace("\"", "\\\"")
 					+ "\"];");
 			for (CfgNode child : node.children) {
 				result.append(node.hashCode() + "->" + child.hashCode() + ";\n");
 			}
 		}
 		result.append("}\n");
+		Program.endTime("graphviz");
 		return result.toString();
 	}
 
 	public Set<CfgNode> flatten() {
+		Program.beginTime("flatten");
 		Set<CfgNode> nodes = new HashSet<>();
 		for (CfgNode root : roots) {
 			nodes.addAll(root.flatten());
 		}
+		Program.endTime("flatten");
 		return nodes;
 	}
 
@@ -420,8 +507,8 @@ public class CfgGraph {
 	}
 
 	private void removeGhostNodes() {
-		long zero = System.currentTimeMillis();
-		for (CfgNode n : this.flatten()) {
+		Program.beginTime("remove ghost");
+		for (CfgNode n : this.allNodes) {
 			if (n.isGhost) {
 				for (CfgNode p : n.parents) {
 					p.children.remove(n);
@@ -436,7 +523,8 @@ public class CfgGraph {
 				}
 			}
 		}
-		counters.put("ghost", counters.get("ghost") + System.currentTimeMillis() - zero);
+		this.allNodes.removeIf(n -> n.isGhost);
+		Program.endTime("remove ghost");
 	}
 
 	private static boolean isEmptyPair(Pair<Set<CfgNode>, Set<CfgNode>> p) {

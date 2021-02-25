@@ -26,8 +26,9 @@ public class update_0_0 extends Strategy {
 	public IStrategoTerm invoke(Context context, IStrategoTerm program) {
         ITermFactory factory = context.getFactory();
         
-        //Program.printDebug("[update]");
-        //Program.printDebug(Program.instance.graph.toGraphviz().replace("\n", "\t"));
+        Program.log("api", "[update] " + program.toString());
+        if (Program.isLogEnabled("graphviz"))
+        	Program.log("graphviz", "at [update] " + Program.instance.graph.toGraphviz().replace("\n", "\t"));
 		Program.instance.update(context, program);
 
         return program;

@@ -16,7 +16,8 @@ strategies
     with
      p' := <flock-add-id> p
     ; <flock-analyse-program> p'
-    ; p'' := <fixpoint-opt(optimize-program-inner | 10000)> p'
+    ; <flock-debug-graph> ()
+    ; p'' := <fixpoint-opt(optimize-program-inner | 1000)> p'
 
   fixpoint-opt(s|0) = id
   fixpoint-opt(s|bound): p -> <s < (fixpoint-opt(s | <dec> bound)) + id> p
@@ -24,14 +25,22 @@ strategies
 
   optimize-program-inner: p -> p'
   where 
-   p' := <oncetd(opt)> p
+   p' := <oncetd(opt-remove + opt-replace)> p
  ; <flock-update> p'
     
-  opt: p -> p''
+  opt-replace: p -> p''
   where 
-    p'  := <fold-expressions + remove-dead-heap-store + propagate-constant-read + remove-dead-store + remove-dead-code> p 
+    p'  := <replacing-optimizations> p 
   ; p'' := <flock-replace-node(|p)> p'
  
+  opt-remove: p -> p'
+  where
+    (p', dead-nodes) := <removing-optimizations> p
+  ; <map(flock-remove-node)> dead-nodes
+  
+  replacing-optimizations = fold-expressions + propagate-constant-read + remove-dead-heap-store + remove-dead-store + replace-dead-if
+  removing-optimizations = remove-skips + remove-empty-blocks
+  
 strategies
 
   fold-expressions: Add(Int(v1), Int(v2)) -> Int(sum)
@@ -43,6 +52,16 @@ strategies
   where
     sub := <(string-to-int, string-to-int); subti; int-to-string> (v1, v2)
   ; <concat-strings; flock-debug> ["[fold-expressions] ", v1, " + ", v2, " -> ", sub]
+
+  fold-expressions: Gt(Int(v1), Int(v2)) -> res
+  where
+    res := <(string-to-int, string-to-int); gti < !True() + !False()> (v1, v2)
+  ; <concat-strings; flock-debug> ["[fold-expressions] ", v1, " > ", v2]
+
+  fold-expressions: Gte(Int(v1), Int(v2)) -> res
+  where
+    res := <(string-to-int, string-to-int); (gti + eq) < !True() + !False()> (v1, v2)
+  ; <concat-strings; flock-debug> ["[fold-expressions] ", v1, " >= ", v2]
   
 strategies
 
@@ -64,40 +83,54 @@ strategies
   ; <map(!(<id>, a); not(flock-is-live)|)> as
   ; <concat-strings; flock-debug> ["dead heap store ", n]
 
+  replace-dead-if: IfThenElse(True, t, e)  -> <remove-id> t
+  where <flock-debug> "removing dead if"
+
+  replace-dead-if: IfThenElse(False, t, e) -> <remove-id> e
+  where <flock-debug> "removing dead if"
+
+  replace-dead-if: IfThenElse(e, Skip(), Skip()) -> Skip()
+  where <flock-debug> "removing dead if"
+
 strategies
 
-  remove-dead-code = fail//remove-empty-block <+ remove-empty-while <+ remove-skip <+ remove-dead-if// <+ remove-singleton-block
+  remove-empty-blocks: Block(stmts) -> (Block(stmts'), empties)
+  where
+    stmts' := <retain-all(not(?Block([])))> stmts
+  ; empties := <retain-all(?Block([]))> stmts
+  ; <not(equal)> (stmts, stmts')
+  ; <not(equal)> ([], empties)
+  where <flock-debug> "removing empty blocks"
 
-  remove-empty-block: Block([]) -> Skip()
-  where <flock-debug> "removing empty block"
+  remove-empty-blocks: Func(n, stmts, r) -> (Func(n, stmts', r), empties)
+  where
+    stmts' := <retain-all(not(?Block([])))> stmts
+  ; empties := <retain-all(?Block([]))> stmts
+  ; <not(equal)> (stmts, stmts')
+  ; <not(equal)> ([], empties)
+  where <flock-debug> "removing empty blocks"
 
-  remove-empty-while: While(e, []) -> Skip()
-  where <flock-debug> "removing empty block"
-
-  remove-skip: Block(stmts) ->  Block(stmts')
+  remove-skips: Block(stmts) -> (Block(stmts'), skips)
   where
     stmts' := <retain-all(not(?Skip))> stmts
+  ; skips := <retain-all(?Skip)> stmts
   ; <not(equal)> (stmts, stmts')
+  ; <not(equal)> ([], skips)
   where <flock-debug> "removing skips"
   
-  remove-skip: Func(n, stmts, r) -> Func(n, stmts', r)
+  remove-skips: Func(n, stmts, r) -> (Func(n, stmts', r), skips)
   where
     stmts' := <retain-all(not(?Skip))> stmts
+  ; skips := <retain-all(?Skip)> stmts
   ; <not(equal)> (stmts, stmts')
+  ; <not(equal)> ([], skips)
   where <flock-debug> "removing skips"
-    
-  remove-dead-if: IfThenElse(True, t, e)  -> <remove-id> t
-  where <flock-debug> "removing dead if"
-
-  remove-dead-if: IfThenElse(False, t, e) -> <remove-id> e
-  where <flock-debug> "removing dead if"
-
-  remove-dead-if: IfThenElse(e, Skip(), Skip()) -> Skip()
-  where <flock-debug> "removing dead if"
 
   remove-singleton-block: Block([s]) -> <remove-id> s
   where <flock-debug> "unwrapping statement from block"
 
-  remove-id: s {FlockNodeId(_)} -> s
+strategies
 
+  remove-id: s -> <bottomup(try(remove-single-id))> s
+  remove-single-id: s {FlockNodeId(_)} -> <set-annotations> (s, [])
   

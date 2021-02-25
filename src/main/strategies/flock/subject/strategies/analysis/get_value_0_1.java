@@ -22,9 +22,9 @@ public class get_value_0_1 extends Strategy {
         ITermFactory factory = context.getFactory();
         IStrategoInt id = (IStrategoInt) current;
     
-        long zero = System.currentTimeMillis();
+        Program.beginTime("value");
         Program.instance.graph.analysis.updateUntilBoundary_values(Program.instance.graph, new CfgNodeId(id.intValue()));        
-        Program.instance.graph.counters.put("values", Program.instance.graph.counters.get("values") + (System.currentTimeMillis() - zero));
+        Program.endTime("value");
 
         CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
         

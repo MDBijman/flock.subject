@@ -35,9 +35,10 @@ public class is_live_0_1 extends Strategy {
         ITermFactory factory = context.getFactory();
         IStrategoInt id = (IStrategoInt) current;
         
-        long zero = System.currentTimeMillis();
+        Program.beginTime("live");
         Program.instance.graph.analysis.updateUntilBoundary_live(Program.instance.graph, new CfgNodeId(id.intValue()));
-        Program.instance.graph.counters.put("live", Program.instance.graph.counters.get("live") + (System.currentTimeMillis() - zero));
+        Program.endTime("live");
+        //Program.log("graphviz", "after is_live update: " + Program.instance.graph.toGraphviz().replace('\n', '\t'));
         
         CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
 

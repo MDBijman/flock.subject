@@ -42,6 +42,7 @@ import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
 import flock.subject.live.LivenessValue;
+import flock.subject.strategies.Program;
 import flock.subject.live.LiveVariablesFlowAnalysis;
 import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
@@ -119,9 +120,11 @@ public class Analysis {
 		for (CfgNode n : new_live)
 			dirtyNodes.addAll(getTermDependencies(n));
 		if (!has_run_live) {
+			Program.log("incremental", "Performing initial analysis until boundary " + boundary);
 			LiveVariablesFlowAnalysis.performDataAnalysis(graph.roots, new_live, dirtyNodes, boundary);
 			has_run_live = true;
 		} else {
+			Program.log("incremental", "Performing analysis until boundary " + boundary);
 			LiveVariablesFlowAnalysis.updateDataAnalysis(new_live, dirtyNodes, boundary);
 		}
 		dirty_live.removeIf(n -> graph.idToInterval.get(n.id) >= boundary);

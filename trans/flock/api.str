@@ -30,15 +30,13 @@ strategies
   
   flock-replace-node(|old): new -> <flock-add-id; replace-node(|old)> new
   external replace-node(|n)
+
+  flock-remove-node(|): new -> <remove-node> new
+  external remove-node(|)
   
   flock-update: program -> <update> program
   external update(|)
   
-  external delete-node(|)
-  
-  //flock-get-program = get-program(|) 
-  //external get-program(|)
-
   external make-id(|)
   
   external debug-graph(|)

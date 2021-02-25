@@ -1,10 +1,12 @@
-package flock.subject.live;
+package org.spoofax;
 
+import org.apache.commons.lang3.tuple.Pair;
+import org.strategoxt.lang.Context;
 import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.interpreter.terms.IStrategoAppl;
 import org.spoofax.interpreter.terms.IStrategoTuple;
 import org.spoofax.interpreter.terms.IStrategoList;
-import org.spoofax.interpreter.terms.IStrategoString;
+import org.spoofax.interpreter.terms.IStrategoInt;
 import org.spoofax.terms.io.TAFTermReader;
 import org.spoofax.terms.TermFactory;
 import java.io.IOException;
@@ -14,9 +16,13 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Stack;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.Queue;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Collection;
 import java.util.function.Supplier;
@@ -28,25 +34,22 @@ import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
 import flock.subject.common.CfgGraph;
 import flock.subject.common.CfgNode;
+import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
 import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
-import flock.subject.live.Lattices;
-import flock.subject.live.MaySetLattice;
-import flock.subject.live.MustSetLattice;
-import flock.subject.live.TransferFunction0;
-import flock.subject.live.TransferFunction1;
-import flock.subject.live.TransferFunction2;
-import flock.subject.live.TransferFunctions;
-import flock.subject.live.UserFunctions;
-import flock.subject.strategies.Program;
+import flock.subject.live.LivenessValue;
+import flock.subject.live.LiveVariablesFlowAnalysis;
+import flock.subject.alias.PointsToFlowAnalysis;
+import flock.subject.value.ValueFlowAnalysis;
+import flock.subject.value.ValueValue;
 
-public class LiveVariablesFlowAnalysis {
+public class FlowAnalysis {
 	public static void main(String[] args) throws IOException {
-		IStrategoTerm ast = new TAFTermReader(new TermFactory()).parseFromFile("snippets/c/many_vars.aterm");
+		IStrategoTerm ast = new TAFTermReader(new TermFactory()).parseFromFile(args[0]);
 		CfgGraph graph = CfgGraph.createControlFlowGraph(ast);
 		performDataAnalysis(graph);
 		System.out.println(graph.toGraphviz());
@@ -140,21 +143,6 @@ public class LiveVariablesFlowAnalysis {
 				root.getProperty("live").value = root.getProperty("live").init.eval(root);
 			}
 		}
-		
-		Program.beginTime("live_initnodeset");
-		for (CfgNode node : nodeset) {
-			if (node.interval < intervalBoundary)
-				continue;
-			Object init = node.getProperty("live").lattice.bottom();
-			for (CfgNode child : node.children) {
-				Object live_o = child.getProperty("live").transfer.eval(child);
-				init = child.getProperty("live").lattice.lub(live_o, init);
-			}
-			node.getProperty("live").value = init;
-		}
-		Program.endTime("live_initnodeset");
-	
-		Program.beginTime("live_loop");
 		while (!worklist.isEmpty()) {
 			CfgNode node = worklist.poll();
 			inWorklist.remove(node);
@@ -184,37 +172,7 @@ public class LiveVariablesFlowAnalysis {
 					inWorklist.add(successor);
 				}
 			}
-		}		
-		Program.endTime("live_loop");
-
-		/*while (!worklist.isEmpty()) {
-			CfgNode node = worklist.poll();
-			inWorklist.remove(node);
-			if (node.interval < intervalBoundary)
-				continue;
-			
-			Object before = node.getProperty("live").value;
-
-			Object after = node.getProperty("live").lattice.bottom();
-			for (CfgNode child : node.children) {
-				Object live_o = child.getProperty("live").transfer.eval(child);
-				after = child.getProperty("live").lattice.lub(live_o, after);
-				
-			}
-			
-			if (node.getProperty("live").lattice.nleq(after, before)) {
-				node.getProperty("live").value = node.getProperty("live").lattice.lub(after, before);
-				for (CfgNode parent : node.parents) {
-					if (parent.interval < intervalBoundary)
-						continue;
-					
-					if (!inWorklist.contains(parent)) {
-						worklist.add(parent);
-						inWorklist.add(parent);
-					}
-				}
-			}
-		}*/
+		}
 	}
 }
 
@@ -328,12 +286,12 @@ class TransferFunction1 extends TransferFunction {
 	public Object eval(CfgNode node) {
 		IStrategoTerm term = node.term;
 		CfgNode next_t = node;
-		IStrategoString n_t = (IStrategoString) Helpers.at(term, 0);
+		IStrategoTerm n_t = Helpers.at(term, 0);
 		IStrategoTerm e_t = Helpers.at(term, 1);
 		return ((Supplier) () -> {
 			Set result = new HashSet();
 			for (Object m_t : (Set) UserFunctions.live_f(next_t)) {
-				if (!n_t.stringValue().equals(((LivenessValue) m_t).name)) {
+				if (!n_t.equals(m_t)) {
 					result.add(m_t);
 				}
 			}
@@ -347,9 +305,9 @@ class TransferFunction2 extends TransferFunction {
 	public Object eval(CfgNode node) {
 		IStrategoTerm term = node.term;
 		CfgNode next_t = node;
-		IStrategoString n_t = (IStrategoString) Helpers.at(term, 0);
+		IStrategoTerm n_t = Helpers.at(term, 0);
 		Object previous_t = UserFunctions.live_f(next_t);
-		Object current_t = SetUtils.create(new LivenessValue(n_t.stringValue(), node.id));
+		Object current_t = SetUtils.create(n_t);
 		Object result_t = SetUtils.union(previous_t, current_t);
 		return result_t;
 	}
@@ -360,9 +318,9 @@ class TransferFunction3 extends TransferFunction {
 	public Object eval(CfgNode node) {
 		IStrategoTerm term = node.term;
 		CfgNode next_t = node;
-		IStrategoString n_t = (IStrategoString) Helpers.at(term, 0);
+		IStrategoTerm n_t = Helpers.at(term, 0);
 		Object previous_t = UserFunctions.live_f(next_t);
-		Object current_t = SetUtils.create(new LivenessValue(n_t.stringValue(), node.id));
+		Object current_t = SetUtils.create(n_t);
 		Object result_t = SetUtils.union(previous_t, current_t);
 		return result_t;
 	}
@@ -373,9 +331,9 @@ class TransferFunction4 extends TransferFunction {
 	public Object eval(CfgNode node) {
 		IStrategoTerm term = node.term;
 		CfgNode next_t = node;
-		IStrategoString n_t = (IStrategoString) Helpers.at(term, 0);
+		IStrategoTerm n_t = Helpers.at(term, 0);
 		Object previous_t = UserFunctions.live_f(next_t);
-		Object current_t = SetUtils.create(new LivenessValue(n_t.stringValue(), node.id));
+		Object current_t = SetUtils.create(n_t);
 		Object result_t = SetUtils.union(previous_t, current_t);
 		return result_t;
 	}
@@ -385,7 +343,7 @@ class TransferFunction5 extends TransferFunction {
 	@Override
 	public Object eval(CfgNode node) {
 		IStrategoTerm term = node.term;
-		return SetUtils.create();
+		return SetUtils.create(false);
 	}
 }
 

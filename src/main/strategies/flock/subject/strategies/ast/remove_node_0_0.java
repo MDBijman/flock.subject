@@ -13,17 +13,19 @@ import org.strategoxt.lang.Strategy;
 
 import flock.subject.common.CfgNode;
 import flock.subject.common.SetUtils;
+import flock.subject.strategies.Program;
+import flock.subject.strategies.analysis.analyse_program_0_0;
 
 import org.spoofax.terms.ParseError;
 
-public class delete_node_0_0 extends Strategy {
+public class remove_node_0_0 extends Strategy {
 	
-	public static delete_node_0_0 instance = new delete_node_0_0();
+	public static remove_node_0_0 instance = new remove_node_0_0();
 	
 	@Override 
-	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm oldId, IStrategoTerm newNode) {
-        ITermFactory factory = context.getFactory();
-        
-        return null;
+	public IStrategoTerm invoke(Context context, IStrategoTerm node) {
+		Program.log("api", "[remove-node] " + node.toString());
+		Program.instance.removeNode(context, node);
+		return node;
     }
 }
