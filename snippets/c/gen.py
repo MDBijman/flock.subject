@@ -4,14 +4,14 @@ def gen_many_loops():
     f.write("int main() {\n")
 
     f.write("\tint a0 = 1;\n")
-    for i in range(1, 3000):
+    for i in range(1, 30):
         f.write(f"\tint a{i};\n")
         f.write(f"\twhile(a{i-1} > 0) {{\n")
         f.write(f"\t\ta{i} = a{i - 1};\n")
         f.write(f"\t\ta{i-1}--;\n")
         f.write("\t}\n")
 
-    f.write("\treturn a99;\n")
+    f.write("\treturn a29;\n")
     f.write("}\n")
 
 
@@ -115,8 +115,8 @@ def gen_large_expr(n):
     f.write("}\n")
 
 gen_many_loops()
-gen_many_vars(100)
-gen_many_vars2(100)
+gen_many_vars(300)
+gen_many_vars2(300)
 gen_many_branch(100)
 
 gen_large_expr(40)

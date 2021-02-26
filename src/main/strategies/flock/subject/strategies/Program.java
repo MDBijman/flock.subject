@@ -84,7 +84,7 @@ public class Program {
 		"time",
 		"count",
 		//"incremental",
-		//"validation",
+		"validation",
 		//"api",
 		//"graphviz"
 	};

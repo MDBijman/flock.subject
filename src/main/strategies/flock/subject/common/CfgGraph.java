@@ -51,6 +51,10 @@ import flock.subject.value.ValueValue;
 public class CfgGraph {
 	public Set<CfgNode> roots;
 	private Set<CfgNode> allNodes;
+	private Graph graph;
+	public Graph getGraph() {
+		return this.graph;
+	}
 	public HashMap<CfgNodeId, CfgNode> idToNode;
 	public HashMap<CfgNodeId, IStrategoTerm> idToTerm;
 	public HashMap<CfgNodeId, Long> idToInterval;
@@ -67,6 +71,7 @@ public class CfgGraph {
 		for (CfgNode n : this.allNodes) {
 			this.idToNode.put(n.id, n);
 		}
+		this.graph = new Graph(roots.iterator().next());
 		this.removeGhostNodes();
 		computeIntervals();
 		checkInvariants();
@@ -91,6 +96,9 @@ public class CfgGraph {
 	}
 	
 	private void checkGraph() {
+		if (this.allNodes.size() != this.graph.size()) {
+			Program.log("validation", "Graphs are not of the same size!");
+		}
 		for (CfgNode n : this.allNodes) {
 			for (CfgNode c : n.children) {
 				if (!c.parents.contains(n)) {
@@ -102,6 +110,20 @@ public class CfgGraph {
 					Program.log("validation", "Error in parent-child!");
 				}
 			}
+			
+			CfgNodeId id = n.id;
+			Set<Graph.Node> children = this.graph.childrenOf(this.graph.getNode(id));
+			if (children.size() != n.children.size()) {
+				Program.log("validation", "Not same size children! " + id.getId() + " has " + children.size() + " in new graph vs. " + n.children.size());
+			}
+			Set<Graph.Node> parents = this.graph.parentsOf(this.graph.getNode(id));
+			if (parents.size() != n.parents.size()) {
+				Program.log("validation", "Not same size parents! " + id.getId() + " has " + parents.size() + " in new graph vs. " + n.parents.size());
+			}
+			
+			//if (n.interval != this.graph.intervalOf(this.graph.getNode(n.id))) {
+			//	Program.log("validation", "Not the same interval! " + id.getId() + " has " + n.interval + " in old graph vs. " + this.graph.intervalOf(this.graph.getNode(n.id)));
+			//}
 		}
 	}
 	
@@ -159,6 +181,7 @@ public class CfgGraph {
 		}
 		
 		long currIndex = components.size() + 1;
+		
 		while (!components.isEmpty()) {
 			Set<CfgNode> c = noOutgoing.iterator().next();
 			noOutgoing.remove(c);
@@ -313,7 +336,20 @@ public class CfgGraph {
 		// Here we patch the graph
 		Program.beginTime("replaceNode fix cfg");
 		Pair<Set<CfgNode>, Set<CfgNode>> newCfgNodes = createCfg(replacement);
+		
+		Set<Graph.Node> it = removedIds
+				.stream()
+				.filter(n -> idToNode.get(n) != null)
+				.map(n -> this.graph.getNode(n))
+				.collect(Collectors.toSet());
 
+		
+		if (newCfgNodes.getLeft().size() > 0) {
+			this.graph.replaceNodes(it, newCfgNodes);
+		} else {
+			it.stream().forEach(n -> this.graph.removeNode(n));
+		}
+		
 		Set<CfgNode> newHeads = newCfgNodes.getLeft();
 		Set<CfgNode> newLeaves = newCfgNodes.getRight();
 		Set<CfgNode> oldParents = new HashSet<>();
@@ -521,6 +557,7 @@ public class CfgGraph {
 					this.roots.remove(n);
 					this.roots.addAll(n.children);
 				}
+				this.graph.removeNode(this.graph.getNode(n.id));
 			}
 		}
 		this.allNodes.removeIf(n -> n.isGhost);

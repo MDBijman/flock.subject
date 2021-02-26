@@ -55,12 +55,14 @@ public class CfgNode {
 	public IStrategoTerm term;
 	public long interval;
 	public boolean isGhost = false;
+	private static long ghostIds = Long.MAX_VALUE;
 	
 	public CfgNode() {
 		children = new HashSet<>();
 		parents = new HashSet<>();
 		properties = new HashMap<>();
 		this.isGhost = true;
+		this.id = new CfgNodeId(ghostIds--);
 	}
 
 	public CfgNode(CfgNodeId id) {
