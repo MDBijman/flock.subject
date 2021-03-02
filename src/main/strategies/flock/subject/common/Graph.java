@@ -31,9 +31,11 @@ public class Graph {
 	private HashMap<Node, Set<Node>> parents = new HashMap<>();
 	private HashMap<CfgNodeId, Node> nodes = new HashMap<>();
 	private Set<Node> roots = new HashSet<>();
+	private Set<Node> leaves = new HashSet<>();
 
 	public Graph(Node root) {
 		this.roots.add(root);
+		this.leaves.add(root);
 		this.nodes.put(root.id, root);
 		this.children.put(root, new HashSet<>());
 		this.parents.put(root, new HashSet<>());
@@ -57,6 +59,10 @@ public class Graph {
 			for (CfgNode parent : n.getParents()) {
 				Node newParent = this.createOrGetNode(parent.id);
 				this.createEdge(newParent, newNode);
+			}
+			
+			if (n.getChildren().size() == 0) {
+				this.leaves.add(newNode);
 			}
 		}
 
@@ -134,13 +140,23 @@ public class Graph {
 
 		this.computeIntervals();
 	}
+	
+	private boolean unroot(Node n) {
+		return this.roots.remove(n);
+	}
+	
+	private boolean unleaf(Node n) {
+		return this.leaves.remove(n);
+	}
 
 	public void removeNodeAndEdges(Node n) {
-		if (roots.contains(n)) {
-			roots.remove(n);
-			roots.addAll(this.children.get(n));
+		if (this.unroot(n)) {
+			this.roots.addAll(this.children.get(n));
 		}
-
+		if (this.unleaf(n)) {
+			this.leaves.addAll(this.parents.get(n));
+		}
+		
 		for (Node child : this.children.get(n)) {
 			this.parents.get(child).remove(n);
 		}
@@ -157,10 +173,11 @@ public class Graph {
 		Program.beginTime("replacenodev2");
 		Set<Node> oldParents = new HashSet<>();
 		Set<Node> oldChildren = new HashSet<>();
-
+		
 		boolean containedRoot = n.stream().anyMatch(node -> this.roots.contains(node));
+		boolean containedLeaf = n.stream().anyMatch(node -> this.leaves.contains(node));
 
-		// Remove the nodes, and remember the nodes that were connected
+		// Remove the nodes, and remember the nodes that were connected to the removed set
 		for (Node remove : n) {
 			oldParents.remove(remove);
 			oldChildren.remove(remove);
@@ -199,23 +216,29 @@ public class Graph {
 		if (containedRoot) {
 			this.roots.addAll(subGraphWithNodes.roots);
 		}
+		// If leaf was replaced, then sub graph leaves are also leaves
+		if (containedLeaf) {
+			this.leaves.addAll(subGraphWithNodes.leaves);
+		}
 
 		// Stitch together the old parents and children of the removed nodes with the
 		// new nodes
 		for (Node oldParent : oldParents) {
+			this.unleaf(oldParent);
 			for (Node subGraphRoot : subGraphWithNodes.roots) {
 				this.createEdge(oldParent, subGraphRoot);
 			}
 		}
 
 		for (Node oldChild : oldChildren) {
+			this.unroot(oldChild);
 			for (Node subGraphLeaf : subGraphLeaves) {
 				this.createEdge(subGraphLeaf, oldChild);
 			}
 		}
 
 		this.updateIntervals(subGraphWithNodes.nodes.values(), oldParents, oldChildren);
-		//Program.printDebug(this.toGraphviz());
+		Program.printDebug(this.toGraphviz());
 		Program.endTime("replacenodev2");
 	}
 
@@ -246,7 +269,7 @@ public class Graph {
 		float parentMax = oldParents
 			.stream()
 			.map(p -> this.intervalOf(p))
-			.max(Float::compare).get();
+			.max(Float::compare).orElse(0.f);
 		
 		float childMin = oldChildren
 			.stream()
@@ -283,6 +306,8 @@ public class Graph {
 	private void computeIntervals() {
 		Program.beginTime("computeIntervals_v2");
 		this.nodeInterval.clear();
+		
+		Program.printDebug("Node size: " + this.nodes.size());
 
 		Long next_index = new Long(1);
 		Stack<Node> S = new Stack<>();
@@ -403,9 +428,10 @@ public class Graph {
 			// String propString = h == null ? " " : (h.value == null ? "" : " " +
 			// h.value.toString() + " ");
 			String rootString = this.roots.contains(node) ? "root: " : "";
+			String leafString = this.leaves.contains(node) ? "leaf: " : "";
 			String intervalString = this.nodeInterval.containsKey(node) ? this.nodeInterval.get(node).toString() : "";
 			result.append(
-					node.id.getId() + "[label=\"" + rootString + node.id.getId() + " - " + intervalString + "\"];");
+					node.id.getId() + "[label=\"" + rootString + leafString + node.id.getId() + " - " + intervalString + "\"];");
 			// + node.interval + " "
 			// + propString.replace("\\", "\\\\").replace("\t", "\\t").replace("\b",
 			// "\\b").replace("\n", "\\n")

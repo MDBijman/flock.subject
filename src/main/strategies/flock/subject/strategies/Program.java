@@ -85,7 +85,7 @@ public class Program {
 		"count",
 		//"incremental",
 		"validation",
-		//"api",
+		"api",
 		//"graphviz"
 	};
 	private static HashSet<String> enabledTags = new HashSet<>(Arrays.asList(enabled));
