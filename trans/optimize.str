@@ -17,7 +17,7 @@ strategies
      p' := <flock-add-id> p
     ; <flock-analyse-program> p'
     ; <flock-debug-graph> ()
-    ; p'' := <fixpoint-opt(optimize-program-inner | 1000)> p'
+    ; p'' := <fixpoint-opt(optimize-program-inner | 3000)> p'
 
   fixpoint-opt(s|0) = id
   fixpoint-opt(s|bound): p -> <s < (fixpoint-opt(s | <dec> bound)) + id> p

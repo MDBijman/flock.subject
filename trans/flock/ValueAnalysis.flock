@@ -1,12 +1,12 @@
-module examples/Min
+module examples/ValueAnalysis
  
 properties
   values: Environment
 
 property rules
   values(_.end) = {[Map[name, Value]]}
-  values(prev -> Assign(n, Int(i))) = { k |-> v | (k |-> v)  <- values(prev), k != n } \[Environment]/ {n |-> Const(i)}
-  values(prev -> Assign(n, _))      = { k |-> v | (k |-> v)  <- values(prev), k != n } \[Environment]/ {n |-> Top()}
+  values(prev -> Assign(n, Int(i))) = { k |-> v | (k |-> v)  <- values(prev), k != n } \[Environment]/ {n: name |-> Const(i): Value}
+  values(prev -> Assign(n, _))      = { k |-> v | (k |-> v)  <- values(prev), k != n } \[Environment]/ {n: name |-> Top(): Value}
   values(prev -> _) = values(prev)
 
 types
@@ -20,12 +20,12 @@ lattices
     type = ConstProp
     bottom = Bottom()
     top = Top()
-    lub(l, r) = match (l, r) with
-      | (Top(), _) => Top()
-      | (_, Top()) => Top()
-      | (Const(i), Const(j)) => if i == j then Const(i) else Top()
-      | (_, Bottom()) => l
-      | (Bottom(), _) => r
+    lub(l: Value, r: Value) = match (l, r) with
+      | (Top(), _) => Top(): Value{l,r}
+      | (_, Top()) => Top(): Value{l,r}
+      | (Const(i), Const(j)) => if i == j then Const(i): Value{l,r} else Top(): Value{l,r}
+      | (_, Bottom()) => l: Value{l,r}
+      | (Bottom(), _) => r: Value{l,r}
       
   Environment where
     type = Map[name, Value]

@@ -20,6 +20,7 @@ import org.strategoxt.lang.Strategy;
 import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.SetUtils;
+import flock.subject.common.Graph.Node;
 import flock.subject.strategies.Program;
 
 import org.spoofax.terms.ParseError;
@@ -32,17 +33,19 @@ public class get_alias_set_0_1 extends Strategy {
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm name) {
         ITermFactory factory = context.getFactory();
-        IStrategoInt id = (IStrategoInt) current;
         
-        Program.instance.graph.analysis.updateUntilBoundary_alias(Program.instance.graph, new CfgNodeId(id.intValue())); 
-        CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
+        CfgNodeId id = new CfgNodeId(((IStrategoInt) current).intValue());
+        Node node = Program.instance.getNode(id);
         
-        if (c == null) {
-        	 return null;
+        if (node == null) {
+        	Program.printDebug("null node");
+        	return null;
         }
         
-        if (c.properties.containsKey("locations")) {
-        	Map<Object, Object> values = (Map<Object, Object>) c.getProperty("locations").value;
+        Program.instance.analysis.updateUntilBoundary_alias(Program.instance.graph, node); 
+        
+        if (node.properties.containsKey("locations")) {
+        	Map<Object, Object> values = (Map<Object, Object>) node.getProperty("locations").lattice.value();
 
             if (values.containsKey(name)) {
                 IStrategoTerm val = (IStrategoTerm) values.get(name);

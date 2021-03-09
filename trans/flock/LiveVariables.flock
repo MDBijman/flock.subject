@@ -8,19 +8,19 @@ property rules
   live(Ref(n) -> next) = result
   where
     previous = live(next)
-    current = {n}
+    current = {n: Live}
     result = previous \/ current
 
   live(Deref(n) -> next) = result
   where
     previous = live(next)
-    current = {n}
+    current = {n: Live}
     result = previous \/ current
     
   live(DerefAssign(n, _) -> next) = result
   where
     previous = live(next)
-    current = {n}
+    current = {n: Live}
     result = previous \/ current
     
   live(Assign(n, e) -> next) = { m | m <- live(next), n != m }

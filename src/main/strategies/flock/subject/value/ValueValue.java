@@ -6,6 +6,7 @@ import org.spoofax.interpreter.terms.IStrategoTerm;
 
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.SetUtils;
+import flock.subject.common.Lattice;
 
 public class ValueValue {
 	public IStrategoTerm value;

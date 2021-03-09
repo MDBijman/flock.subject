@@ -6,7 +6,6 @@ import org.strategoxt.lang.Context;
 import org.strategoxt.lang.Strategy;
 
 import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.common.CfgGraph;
 import flock.subject.common.CfgNode;
 import flock.subject.common.Lattice;
 import flock.subject.live.LiveVariablesFlowAnalysis;
@@ -30,7 +29,8 @@ public class analyse_program_0_0 extends Strategy {
 			context.getIOAgent().printError("Creating CFG");
 			
 			Program.instance.createControlFlowGraph(context, current);
-			
+			Program.log("graphviz", Program.instance.graph.toGraphviz());
+			Program.log("api", "analyse_program");
 			Program.instance.init(context, current);
 
 			

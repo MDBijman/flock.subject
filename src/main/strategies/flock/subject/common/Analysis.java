@@ -32,8 +32,9 @@ import org.spoofax.terms.StrategoConstructor;
 import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
-import flock.subject.common.CfgGraph;
 import flock.subject.common.CfgNode;
+import flock.subject.common.Graph;
+import flock.subject.common.Graph.Node;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
@@ -41,158 +42,156 @@ import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
-import flock.subject.live.LivenessValue;
-import flock.subject.strategies.Program;
+import flock.subject.live.LiveValue;
 import flock.subject.live.LiveVariablesFlowAnalysis;
+import flock.subject.strategies.Program;
 import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
 import flock.subject.value.ValueValue;
 
 public class Analysis {
-	public HashSet<CfgNode> dirty_live;
-	public HashSet<CfgNode> new_live;
+	public HashSet<Node> dirty_live;
+	public HashSet<Node> new_live;
 	public boolean is_forward_live;
-	public HashSet<CfgNode> dirty_values;
-	public HashSet<CfgNode> new_values;
+	public boolean has_run_live = false;
+	public HashSet<Node> dirty_values;
+	public HashSet<Node> new_values;
 	public boolean is_forward_values;
-	public HashSet<CfgNode> dirty_alias;
-	public HashSet<CfgNode> new_alias;
+	public boolean has_run_values = false;
+	public HashSet<Node> dirty_alias;
+	public HashSet<Node> new_alias;
 	public boolean is_forward_alias;
-	private boolean has_run_live = false, has_run_values = false, has_run_alias = false;
+	public boolean has_run_alias = false;
 
 	public Analysis() {
-		dirty_live = new HashSet<CfgNode>();
-		new_live = new HashSet<CfgNode>();
+		dirty_live = new HashSet<Node>();
+		new_live = new HashSet<Node>();
 		is_forward_live = false;
-		dirty_values = new HashSet<CfgNode>();
-		new_values = new HashSet<CfgNode>();
+		dirty_values = new HashSet<Node>();
+		new_values = new HashSet<Node>();
 		is_forward_values = true;
-		dirty_alias = new HashSet<CfgNode>();
-		new_alias = new HashSet<CfgNode>();
+		dirty_alias = new HashSet<Node>();
+		new_alias = new HashSet<Node>();
 		is_forward_alias = true;
 	}
 
-	public List<Set<CfgNode>> getDirtySets() {
-		ArrayList<Set<CfgNode>> dirtySets = new ArrayList<>();
+	public List<Set<Node>> getDirtySets() {
+		ArrayList<Set<Node>> dirtySets = new ArrayList<>();
 		dirtySets.add(this.dirty_live);
 		dirtySets.add(this.dirty_values);
 		dirtySets.add(this.dirty_alias);
 		return dirtySets;
 	}
 
-	public List<Set<CfgNode>> getNewSets() {
-		ArrayList<Set<CfgNode>> newSets = new ArrayList<>();
+	public List<Set<Node>> getNewSets() {
+		ArrayList<Set<Node>> newSets = new ArrayList<>();
 		newSets.add(this.new_live);
 		newSets.add(this.new_values);
 		newSets.add(this.new_alias);
 		return newSets;
 	}
-
-	public void addToDirty(CfgNode n) {
+	
+	public void addToDirty(Node n) {
 		dirty_live.add(n);
 		dirty_values.add(n);
 		dirty_alias.add(n);
 	}
 
-	public void addToNew(CfgNode n) {
+	public void addToNew(Node n) {
 		new_live.add(n);
 		new_values.add(n);
 		new_alias.add(n);
 	}
 
-	public void removeFromDirty(Set<CfgNodeId> removedIds) {
-		dirty_live.removeIf(n -> removedIds.contains(n.id));
-		dirty_values.removeIf(n -> removedIds.contains(n.id));
-		dirty_alias.removeIf(n -> removedIds.contains(n.id));
+	public void removeFromDirty(Set<Node> removedNodes) {
+		dirty_live.removeAll(removedNodes);
+		dirty_values.removeAll(removedNodes);
+		dirty_alias.removeAll(removedNodes);
 	}
 
-	public void removeFromNew(Set<CfgNodeId> removedIds) {
-		new_live.removeIf(n -> removedIds.contains(n.id));
-		new_values.removeIf(n -> removedIds.contains(n.id));
-		new_alias.removeIf(n -> removedIds.contains(n.id));
+	public void removeFromNew(Set<Node> removedNodes) {
+		new_live.removeAll(removedNodes);
+		new_values.removeAll(removedNodes);
+		new_alias.removeAll(removedNodes);
 	}
 
-	public void updateUntilBoundary_live(CfgGraph graph, CfgNodeId id) {
-		long boundary = graph.idToInterval.get(id);
-		Set<CfgNode> dirtyNodes = new HashSet<>(dirty_live);
-		for (CfgNode n : dirty_live)
-			dirtyNodes.addAll(getTermDependencies(n));
-		for (CfgNode n : new_live)
-			dirtyNodes.addAll(getTermDependencies(n));
+	public void updateUntilBoundary_live(Graph graph, Node node) {
+		float boundary = graph.intervalOf(node);
+		Set<Node> dirtyNodes = new HashSet<>(dirty_live);
+		for (Node n : dirty_live)
+			dirtyNodes.addAll(getTermDependencies(graph, n));
+		for (Node n : new_live)
+			dirtyNodes.addAll(getTermDependencies(graph, n));
 		if (!has_run_live) {
-			Program.log("incremental", "Performing initial analysis until boundary " + boundary);
-			LiveVariablesFlowAnalysis.performDataAnalysis(graph.roots, new_live, dirtyNodes, boundary);
+			LiveVariablesFlowAnalysis.performDataAnalysis(graph, graph.roots(), new_live, dirtyNodes, boundary);
 			has_run_live = true;
 		} else {
-			Program.log("incremental", "Performing analysis until boundary " + boundary);
-			LiveVariablesFlowAnalysis.updateDataAnalysis(new_live, dirtyNodes, boundary);
+			LiveVariablesFlowAnalysis.updateDataAnalysis(graph, new_live, dirtyNodes, boundary);
 		}
-		dirty_live.removeIf(n -> graph.idToInterval.get(n.id) >= boundary);
-		new_live.removeIf(n -> graph.idToInterval.get(n.id) >= boundary);
+		dirty_live.removeIf(n -> graph.intervalOf(n) >= boundary);
+		new_live.removeIf(n -> graph.intervalOf(n) >= boundary);
 	}
 
-	public void updateUntilBoundary_values(CfgGraph graph, CfgNodeId id) {
-		long boundary = graph.idToInterval.get(id);
-		Set<CfgNode> dirtyNodes = new HashSet<>(dirty_values);
-		for (CfgNode n : dirty_values)
-			dirtyNodes.addAll(getTermDependencies(n));
-		for (CfgNode n : new_values)
-			dirtyNodes.addAll(getTermDependencies(n));
+	public void updateUntilBoundary_values(Graph graph, Node node) {
+		float boundary = graph.intervalOf(node);
+		Set<Node> dirtyNodes = new HashSet<>(dirty_values);
+		for (Node n : dirty_values)
+			dirtyNodes.addAll(getTermDependencies(graph, n));
+		for (Node n : new_values)
+			dirtyNodes.addAll(getTermDependencies(graph, n));
 		if (!has_run_values) {
-			ValueFlowAnalysis.performDataAnalysis(graph.roots, new_values, dirtyNodes, boundary);
+			ValueFlowAnalysis.performDataAnalysis(graph, graph.roots(), new_values, dirtyNodes, boundary);
 			has_run_values = true;
 		} else {
-			ValueFlowAnalysis.updateDataAnalysis(new_values, dirtyNodes, boundary);
+			ValueFlowAnalysis.updateDataAnalysis(graph, new_values, dirtyNodes, boundary);
 		}
-		dirty_values.removeIf(n -> graph.idToInterval.get(n.id) <= boundary);
-		new_values.removeIf(n -> graph.idToInterval.get(n.id) <= boundary);
+		dirty_values.removeIf(n -> graph.intervalOf(n) <= boundary);
+		new_values.removeIf(n -> graph.intervalOf(n) <= boundary);
 	}
 
-	public void updateUntilBoundary_alias(CfgGraph graph, CfgNodeId id) {
-		long boundary = graph.idToInterval.get(id);
-		Set<CfgNode> dirtyNodes = new HashSet<>(dirty_alias);
-		for (CfgNode n : dirty_alias)
-			dirtyNodes.addAll(getTermDependencies(n));
-		for (CfgNode n : new_alias)
-			dirtyNodes.addAll(getTermDependencies(n));
+	public void updateUntilBoundary_alias(Graph graph, Node node) {
+		float boundary = graph.intervalOf(node);
+		Set<Node> dirtyNodes = new HashSet<>(dirty_alias);
+		for (Node n : dirty_alias)
+			dirtyNodes.addAll(getTermDependencies(graph, n));
+		for (Node n : new_alias)
+			dirtyNodes.addAll(getTermDependencies(graph, n));
 		if (!has_run_alias) {
-			PointsToFlowAnalysis.performDataAnalysis(graph.roots, new_alias, dirtyNodes, boundary);
+			PointsToFlowAnalysis.performDataAnalysis(graph, graph.roots(), new_alias, dirtyNodes, boundary);
 			has_run_alias = true;
 		} else {
-			PointsToFlowAnalysis.updateDataAnalysis(new_alias, dirtyNodes, boundary);
+			PointsToFlowAnalysis.updateDataAnalysis(graph, new_alias, dirtyNodes, boundary);
 		}
-		dirty_alias.removeIf(n -> graph.idToInterval.get(n.id) <= boundary);
-		new_alias.removeIf(n -> graph.idToInterval.get(n.id) <= boundary);
+		dirty_alias.removeIf(n -> graph.intervalOf(n) <= boundary);
+		new_alias.removeIf(n -> graph.intervalOf(n) <= boundary);
 	}
 
-	public static Set<CfgNode> getTermDependencies(CfgNode n) {
-		Set<CfgNode> r = new HashSet<>();
-		if (TermUtils.isAppl(n.term, "Int", 1)) {
-			r.addAll(n.parents);
+	public static Set<Node> getTermDependencies(Graph g, Node n) {
+		Set<Node> r = new HashSet<>();
+		if (TermUtils.isAppl(g.termOf(n), "Int", 1)) {
+			r.addAll(g.parentsOf(n));
 		}
-		for (CfgNode p : n.children) {
-			if (TermUtils.isAppl(p.term, "Assign", -1)) {
+		for (Node p : g.childrenOf(n)) {
+			if (TermUtils.isAppl(g.termOf(p), "Assign", -1)) {
 				r.add(p);
 			}
 		}
 		return r;
 	}
 
-	public static boolean removeFact(Context context, CfgNode current, CfgNodeId toRemove) {
+	public static boolean removeFact(Context context, Node current, CfgNodeId toRemove) {
 		boolean removedLiveness = false;
 		if (current.getProperty("live") != null) {
-			Set<LivenessValue> lv = (Set<LivenessValue>) current.getProperty("live").value;
-			assert lv != null;
-			removedLiveness = lv.removeIf(ll -> {
-				return ll.origin.getId() == toRemove.getId();
-			});
+			Set<LiveValue> lv = (Set<LiveValue>) current.getProperty("live").lattice.value();
+			removedLiveness = lv.removeIf(ll -> ll.origin.getId() == toRemove.getId());
 		}
 		boolean removedConst = false;
 		if (current.getProperty("values") != null) {
-			HashMap<String, ValueValue> cv = (HashMap<String, ValueValue>) current.getProperty("values").value;
-			assert cv != null;
-			removedConst = cv.entrySet().removeIf(ll -> {
-				return ll.getValue().origin.contains(toRemove);
+			HashMap cv = (HashMap) current.getProperty("values").lattice.value();
+			Set<Entry> e = cv.entrySet();
+			removedConst = e.removeIf(entry -> {
+				Lattice l = (Lattice) entry.getValue();
+				return l.origin().contains(toRemove);
 			});
 		}
 		if (current.getProperty("alias") != null) {

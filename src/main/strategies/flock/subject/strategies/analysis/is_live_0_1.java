@@ -19,9 +19,10 @@ import org.strategoxt.lang.Strategy;
 
 import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
+import flock.subject.common.Graph.Node;
 import flock.subject.common.SetUtils;
 import flock.subject.strategies.Program;
-import flock.subject.live.LivenessValue;
+import flock.subject.live.LiveValue;
 
 import org.spoofax.terms.ParseError;
 import org.spoofax.terms.Term;
@@ -33,28 +34,24 @@ public class is_live_0_1 extends Strategy {
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm name) {
         ITermFactory factory = context.getFactory();
-        IStrategoInt id = (IStrategoInt) current;
-        
+        CfgNodeId id = new CfgNodeId(((IStrategoInt) current).intValue());
+        Node node = Program.instance.getNode(id);
+        if (node == null) {
+        	Program.printDebug("CfgNode is null with id " + id.getId());
+        	return current;
+        }
         Program.beginTime("live");
-        Program.instance.graph.analysis.updateUntilBoundary_live(Program.instance.graph, new CfgNodeId(id.intValue()));
+        Program.instance.analysis.updateUntilBoundary_live(Program.instance.graph, node);
         Program.endTime("live");
         //Program.log("graphviz", "after is_live update: " + Program.instance.graph.toGraphviz().replace('\n', '\t'));
         
-        CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
-
-        if (c == null) {
-        	//Program.printDebug("CfgNode is null with id " + id.intValue());
-        	return current;
-        }
-        
         HashSet<String> names = new HashSet<>();
-        for (LivenessValue lv : (HashSet<LivenessValue>) c.getProperty("live").value) {
-			names.add(lv.name);
+        for (LiveValue lv : (HashSet<LiveValue>) node.getProperty("live").lattice.value()) {
+			names.add(((IStrategoString)lv.value).stringValue());
         }
         
-        boolean isLess = c.getProperty("live").lattice.leq(SetUtils.create(((IStrategoString) name).stringValue()), names);
-        //Program.printDebug("[is-live] " + name.toString() + " is-live: " + isLess + " at " + current.toString());
+        boolean contains = names.contains(((IStrategoString) name).stringValue());
         
-        return isLess ? current : null;
+        return contains ? current : null;
     }
 }

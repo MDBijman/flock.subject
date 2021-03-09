@@ -25,8 +25,7 @@ public class debug_graph_0_0 extends Strategy {
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm program) {
         Program.printDebug("[debug-graph]");
-        Program.printDebug("old " + Program.instance.graph.toGraphviz().replace("\n", "\t"));
-        Program.printDebug("new " + Program.instance.graph.getGraph().toGraphviz().replace("\n", "\t"));
+        Program.printDebug(Program.instance.graph.toGraphviz().replace("\n", "\t"));
         Program.logTimers();
         Program.logCounts();
         return program;

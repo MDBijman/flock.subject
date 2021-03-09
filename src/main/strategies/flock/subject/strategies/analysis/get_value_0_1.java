@@ -10,6 +10,8 @@ import org.strategoxt.lang.Strategy;
 
 import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
+import flock.subject.common.Graph.Node;
+import flock.subject.common.Lattice;
 import flock.subject.strategies.Program;
 import flock.subject.value.ValueValue;
 
@@ -20,25 +22,23 @@ public class get_value_0_1 extends Strategy {
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm name) {
         ITermFactory factory = context.getFactory();
-        IStrategoInt id = (IStrategoInt) current;
+        CfgNodeId id = new CfgNodeId(((IStrategoInt) current).intValue());
+        Node node = Program.instance.getNode(id);
     
-        Program.beginTime("value");
-        Program.instance.graph.analysis.updateUntilBoundary_values(Program.instance.graph, new CfgNodeId(id.intValue()));        
-        Program.endTime("value");
-
-        CfgNode c = Program.instance.getCfgNode(new CfgNodeId(id.intValue()));
-        
-        if (c == null) {
+        if (node == null) {
         	Program.printDebug("null node");
         	return null;
         }
         
-        if (c.properties.containsKey("values")) {
-            Map<Object, Object> values = (Map<Object, Object>) c.getProperty("values").value;
-            
+        Program.beginTime("value");
+        Program.instance.analysis.updateUntilBoundary_values(Program.instance.graph, node); 
+        Program.endTime("value");
+        
+        if (node.properties.containsKey("values")) {
+            Map<Object, Object> values = (Map<Object, Object>) node.getProperty("values").lattice.value();
             if (values.containsKey(((IStrategoString) name).stringValue())) {
                 Object val = values.get(((IStrategoString) name).stringValue());
-                IStrategoTerm sval = ((ValueValue)val).value;
+                IStrategoTerm sval = (IStrategoTerm)((Lattice)val).value();
                 return sval;
             } else {
             	Program.printDebug("null value");

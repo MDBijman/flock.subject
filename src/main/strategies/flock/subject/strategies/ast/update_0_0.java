@@ -29,7 +29,7 @@ public class update_0_0 extends Strategy {
         Program.log("api", "[update] " + program.toString());
         if (Program.isLogEnabled("graphviz"))
         	Program.log("graphviz", "at [update] " + Program.instance.graph.toGraphviz().replace("\n", "\t"));
-		Program.instance.update(context, program);
+		Program.instance.update(program);
 
         return program;
     }

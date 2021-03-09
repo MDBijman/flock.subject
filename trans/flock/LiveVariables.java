@@ -32,8 +32,9 @@ import org.spoofax.terms.StrategoConstructor;
 import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
-import flock.subject.common.CfgGraph;
 import flock.subject.common.CfgNode;
+import flock.subject.common.Graph;
+import flock.subject.common.Graph.Node;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
@@ -41,7 +42,7 @@ import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
-import flock.subject.live.LivenessValue;
+import flock.subject.live.LiveValue;
 import flock.subject.live.LiveVariablesFlowAnalysis;
 import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
@@ -50,17 +51,17 @@ import flock.subject.value.ValueValue;
 public class FlowAnalysis {
 	public static void main(String[] args) throws IOException {
 		IStrategoTerm ast = new TAFTermReader(new TermFactory()).parseFromFile(args[0]);
-		CfgGraph graph = CfgGraph.createControlFlowGraph(ast);
+		Graph graph = Graph.createCfg(ast);
 		performDataAnalysis(graph);
 		System.out.println(graph.toGraphviz());
 	}
 
-	public static void initNodeValue(CfgNode node) {
+	public static void initNodeValue(Node node) {
 		node.addProperty("live", Lattices.MaySet);
 		node.getProperty("live").value = node.getProperty("live").lattice.bottom();
 	}
 
-	public static void initNodeTransferFunction(CfgNode node) {
+	public static void initNodeTransferFunction(Node node) {
 		{
 			if (true) {
 				node.getProperty("live").transfer = TransferFunctions.TransferFunction0;
@@ -87,41 +88,43 @@ public class FlowAnalysis {
 		}
 	}
 
-	public static void performDataAnalysis(CfgNode root) {
-		HashSet<CfgNode> nodeset = new HashSet<CfgNode>();
+	public static void performDataAnalysis(Graph g, Node root) {
+		HashSet<Node> nodeset = new HashSet<Node>();
 		nodeset.add(root);
-		performDataAnalysis(new HashSet<CfgNode>(), nodeset);
+		performDataAnalysis(g, new HashSet<Node>(), nodeset);
 	}
 
-	public static void performDataAnalysis(Set<CfgNode> nodeset) {
-		performDataAnalysis(new HashSet<CfgNode>(), nodeset);
+	public static void performDataAnalysis(Graph g, Collection<Node> nodeset) {
+		performDataAnalysis(g, new HashSet<Node>(), nodeset);
 	}
 
-	public static void performDataAnalysis(CfgGraph graph) {
-		performDataAnalysis(graph.roots, graph.flatten());
+	public static void performDataAnalysis(Graph g) {
+		performDataAnalysis(g, g.roots(), g.nodes());
 	}
 
-	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset) {
-		performDataAnalysis(roots, nodeset, new HashSet<CfgNode>());
+	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset) {
+		performDataAnalysis(g, roots, nodeset, new HashSet<Node>());
 	}
 
-	public static void updateDataAnalysis(Set<CfgNode> news, Set<CfgNode> dirty) {
-		performDataAnalysis(new HashSet<CfgNode>(), news, dirty);
+	public static void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty) {
+		performDataAnalysis(g, new HashSet<Node>(), news, dirty);
 	}
 
-	public static void updateDataAnalysis(Set<CfgNode> news, Set<CfgNode> dirty, long intervalBoundary) {
-		performDataAnalysis(new HashSet<CfgNode>(), news, dirty, intervalBoundary);
+	public static void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty,
+			float intervalBoundary) {
+		performDataAnalysis(g, new HashSet<Node>(), news, dirty, intervalBoundary);
 	}
 
-	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset, Set<CfgNode> dirty) {
-		performDataAnalysis(roots, nodeset, dirty, Long.MIN_VALUE);
+	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
+			Collection<Node> dirty) {
+		performDataAnalysis(g, roots, nodeset, dirty, -Float.MAX_VALUE);
 	}
 
-	public static void performDataAnalysis(Set<CfgNode> roots, Set<CfgNode> nodeset, Set<CfgNode> dirty,
-			long intervalBoundary) {
-		Queue<CfgNode> worklist = new LinkedBlockingQueue<>();
-		HashSet<CfgNode> inWorklist = new HashSet<>();
-		for (CfgNode node : nodeset) {
+	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
+			Collection<Node> dirty, float intervalBoundary) {
+		Queue<Node> worklist = new LinkedBlockingQueue<>();
+		HashSet<Node> inWorklist = new HashSet<>();
+		for (Node node : nodeset) {
 			if (node.interval < intervalBoundary)
 				continue;
 			worklist.add(node);
@@ -129,14 +132,14 @@ public class FlowAnalysis {
 			initNodeValue(node);
 			initNodeTransferFunction(node);
 		}
-		for (CfgNode node : dirty) {
+		for (Node node : dirty) {
 			if (node.interval < intervalBoundary)
 				continue;
 			worklist.add(node);
 			inWorklist.add(node);
 			initNodeTransferFunction(node);
 		}
-		for (CfgNode root : roots) {
+		for (Node root : roots) {
 			if (root.interval < intervalBoundary)
 				continue;
 			{
@@ -144,21 +147,21 @@ public class FlowAnalysis {
 			}
 		}
 		while (!worklist.isEmpty()) {
-			CfgNode node = worklist.poll();
+			Node node = worklist.poll();
 			inWorklist.remove(node);
 			if (node.interval < intervalBoundary)
 				continue;
 			Object live_n = node.getProperty("live").transfer.eval(node);
-			for (CfgNode successor : node.children) {
-				boolean changed = false;
+			for (Node successor : g.childrenOf(node)) {
 				if (successor.interval < intervalBoundary)
 					continue;
+				boolean changed = false;
 				if (changed && !inWorklist.contains(successor)) {
 					worklist.add(successor);
 					inWorklist.add(successor);
 				}
 			}
-			for (CfgNode successor : node.parents) {
+			for (Node successor : g.parentsOf(node)) {
 				boolean changed = false;
 				if (successor.interval < intervalBoundary)
 					continue;
@@ -193,22 +196,22 @@ class MustSetLattice extends Lattice {
 	}
 
 	@Override
-	public Object lub(Object l, Object r) {
+	public Object lub(LatticeValue l, LatticeValue r) {
 		return SetUtils.intersection(l, r);
 	}
 
 	@Override
-	public boolean leq(Object l, Object r) {
+	public boolean leq(LatticeValue l, LatticeValue r) {
 		return SetUtils.isSupersetEquals(l, r);
 	}
 
 	@Override
-	public Object glb(Object l, Object r) {
+	public Object glb(LatticeValue l, LatticeValue r) {
 		return SetUtils.union(l, r);
 	}
 
 	@Override
-	public boolean geq(Object l, Object r) {
+	public boolean geq(LatticeValue l, LatticeValue r) {
 		return SetUtils.isSubsetEquals(l, r);
 	}
 }
@@ -225,22 +228,22 @@ class MaySetLattice extends Lattice {
 	}
 
 	@Override
-	public Object lub(Object l, Object r) {
+	public Object lub(LatticeValue l, LatticeValue r) {
 		return SetUtils.union(l, r);
 	}
 
 	@Override
-	public boolean leq(Object l, Object r) {
+	public boolean leq(LatticeValue l, LatticeValue r) {
 		return SetUtils.isSubsetEquals(l, r);
 	}
 
 	@Override
-	public Object glb(Object l, Object r) {
+	public Object glb(LatticeValue l, LatticeValue r) {
 		return SetUtils.intersection(l, r);
 	}
 
 	@Override
-	public boolean geq(Object l, Object r) {
+	public boolean geq(LatticeValue l, LatticeValue r) {
 		return SetUtils.isSupersetEquals(l, r);
 	}
 }
@@ -258,7 +261,7 @@ class MapLattice extends Lattice {
 	}
 
 	@Override
-	public Object lub(Object l, Object r) {
+	public Object lub(LatticeValue l, LatticeValue r) {
 		return MapUtils.union(valueLattice, l, r);
 	}
 }
@@ -274,18 +277,18 @@ class TransferFunctions {
 
 class TransferFunction0 extends TransferFunction {
 	@Override
-	public Object eval(CfgNode node) {
+	public Object eval(Node node) {
 		IStrategoTerm term = node.term;
-		CfgNode next_t = node;
+		Node next_t = node;
 		return UserFunctions.live_f(next_t);
 	}
 }
 
 class TransferFunction1 extends TransferFunction {
 	@Override
-	public Object eval(CfgNode node) {
+	public Object eval(Node node) {
 		IStrategoTerm term = node.term;
-		CfgNode next_t = node;
+		Node next_t = node;
 		IStrategoTerm n_t = Helpers.at(term, 0);
 		IStrategoTerm e_t = Helpers.at(term, 1);
 		return ((Supplier) () -> {
@@ -302,12 +305,12 @@ class TransferFunction1 extends TransferFunction {
 
 class TransferFunction2 extends TransferFunction {
 	@Override
-	public Object eval(CfgNode node) {
+	public Object eval(Node node) {
 		IStrategoTerm term = node.term;
-		CfgNode next_t = node;
+		Node next_t = node;
 		IStrategoTerm n_t = Helpers.at(term, 0);
 		Object previous_t = UserFunctions.live_f(next_t);
-		Object current_t = SetUtils.create(n_t);
+		Object current_t = SetUtils.create(new LiveValue(n_t, node.getId()));
 		Object result_t = SetUtils.union(previous_t, current_t);
 		return result_t;
 	}
@@ -315,12 +318,12 @@ class TransferFunction2 extends TransferFunction {
 
 class TransferFunction3 extends TransferFunction {
 	@Override
-	public Object eval(CfgNode node) {
+	public Object eval(Node node) {
 		IStrategoTerm term = node.term;
-		CfgNode next_t = node;
+		Node next_t = node;
 		IStrategoTerm n_t = Helpers.at(term, 0);
 		Object previous_t = UserFunctions.live_f(next_t);
-		Object current_t = SetUtils.create(n_t);
+		Object current_t = SetUtils.create(new LiveValue(n_t, node.getId()));
 		Object result_t = SetUtils.union(previous_t, current_t);
 		return result_t;
 	}
@@ -328,12 +331,12 @@ class TransferFunction3 extends TransferFunction {
 
 class TransferFunction4 extends TransferFunction {
 	@Override
-	public Object eval(CfgNode node) {
+	public Object eval(Node node) {
 		IStrategoTerm term = node.term;
-		CfgNode next_t = node;
+		Node next_t = node;
 		IStrategoTerm n_t = Helpers.at(term, 0);
 		Object previous_t = UserFunctions.live_f(next_t);
-		Object current_t = SetUtils.create(n_t);
+		Object current_t = SetUtils.create(new LiveValue(n_t, node.getId()));
 		Object result_t = SetUtils.union(previous_t, current_t);
 		return result_t;
 	}
@@ -341,7 +344,7 @@ class TransferFunction4 extends TransferFunction {
 
 class TransferFunction5 extends TransferFunction {
 	@Override
-	public Object eval(CfgNode node) {
+	public Object eval(Node node) {
 		IStrategoTerm term = node.term;
 		return SetUtils.create(false);
 	}
@@ -349,7 +352,7 @@ class TransferFunction5 extends TransferFunction {
 
 class UserFunctions {
 	public static Object live_f(Object o) {
-		CfgNode node = (CfgNode) o;
+		Node node = (Node) o;
 		return node.getProperty("live").value;
 	}
 }

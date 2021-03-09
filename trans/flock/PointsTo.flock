@@ -1,4 +1,4 @@
-module PointsTo
+module examples/PointsTo
  
 types
   LocationId = 

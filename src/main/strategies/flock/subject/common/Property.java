@@ -32,7 +32,6 @@ import org.spoofax.terms.StrategoConstructor;
 import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
-import flock.subject.common.CfgGraph;
 import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
@@ -41,30 +40,28 @@ import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
-import flock.subject.live.LivenessValue;
+import flock.subject.live.LiveValue;
 import flock.subject.live.LiveVariablesFlowAnalysis;
 import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.value.ValueFlowAnalysis;
 import flock.subject.value.ValueValue;
 
 public class Property {
 	String name;
-	public Lattice lattice;
 	public TransferFunction transfer;
 	public TransferFunction init;
-	public Object value;
+	public Lattice lattice;
 
 	public Property(String name, Lattice lattice) {
 		this.name = name;
 		this.lattice = lattice;
 	}
 
-	public Object getValue() {
-		return value;
+	public Object getLattice() {
+		return lattice;
 	}
 
 	public String toGraphviz() {
-		return " " + name + "=" + valueToString(value);
+		return " " + name + "=" + valueToString(lattice.value());
 	}
 
 	private static String valueToString(Object value) {

@@ -32,7 +32,6 @@ import org.spoofax.terms.StrategoConstructor;
 import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
-import flock.subject.common.CfgGraph;
 import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
@@ -41,35 +40,36 @@ import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
-import flock.subject.live.LivenessValue;
+import flock.subject.live.LiveValue;
 import flock.subject.live.LiveVariablesFlowAnalysis;
 import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.value.ValueFlowAnalysis;
 import flock.subject.value.ValueValue;
 
 public class MapUtils {
-  public static Map union(Lattice lat,Object l, Object r) {
-                                                            Map ls = (Map ) l;
-                                                            HashMap rs = (HashMap ) r;
-                                                            Map res = new HashMap ( );
-                                                            res. putAll(ls);
-                                                            for( Map. Entry i : (Set<Map. Entry> ) rs. entrySet( )) {
-                                                                                                                      if(res. containsKey(i. getKey( ))) {
-                                                                                                                                                           Object v = res. get(i. getKey( ));
-                                                                                                                                                           Object m = lat. lub(i. getValue( ), v);
-                                                                                                                                                           res. put(i. getKey( ), m);
-                                                                                                                                                         } else {
-                                                                                                                                                                  res. put(i. getKey( ), i. getValue( ));
-                                                                                                                                                                }
-                                                                                                                    }
-                                                            return res;
-                                                          }
-  public static Map create(Object k, Object v) {
-                                                 HashMap result = new HashMap ( );
-                                                 result. put(k, v);
-                                                 return result;
-                                               }
-  public static Map create( ) {
-                                return new HashMap ( );
-                              }
+	public static Map union(Lattice l, Lattice r) {
+		Map ls = (Map) l.value();
+		HashMap rs = (HashMap) r.value();
+		Map res = new HashMap();
+		res.putAll(ls);
+		for (Map.Entry i : (Set<Map.Entry>) rs.entrySet()) {
+			if (res.containsKey(i.getKey())) {
+				Lattice v = (Lattice)res.get(i.getKey());
+				Lattice m = ((Lattice)i.getValue()).lub(v);
+				res.put(i.getKey(), m);
+			} else {
+				res.put(i.getKey(), i.getValue());
+			}
+		}
+		return res;
+	}
+
+	public static Map create(Object k, Object v) {
+		HashMap result = new HashMap();
+		result.put(k, v);
+		return result;
+	}
+
+	public static Map create() {
+		return new HashMap();
+	}
 }
