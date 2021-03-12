@@ -8,12 +8,11 @@ import java.util.Map;
 import org.strategoxt.lang.Context;
 import org.strategoxt.lang.Strategy;
 
-import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Graph.Node;
 import flock.subject.common.Lattice;
 import flock.subject.strategies.Program;
-import flock.subject.value.ValueValue;
+import flock.subject.value.ConstProp;
 
 public class get_value_0_1 extends Strategy {
 	

@@ -33,23 +33,23 @@ import org.spoofax.terms.StrategoConstructor;
 import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
-import flock.subject.common.CfgNode;
 import flock.subject.common.Graph;
 import flock.subject.common.Graph.Node;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
+import flock.subject.common.Lattice.MaySet;
+import flock.subject.common.Lattice.MustSet;
 import flock.subject.common.Lattice.MapLattice;
 import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
-import flock.subject.live.LiveValue;
+import flock.subject.live.Live;
 import flock.subject.live.LiveVariablesFlowAnalysis;
-import flock.subject.strategies.Program;
 import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
-import flock.subject.value.ValueValue;
+import flock.subject.value.ConstProp;
 
 public class ValueFlowAnalysis {
 	public static void main(String[] args) throws IOException {
@@ -60,7 +60,7 @@ public class ValueFlowAnalysis {
 	}
 
 	public static void initNodeValue(Node node) {
-		node.addProperty("values", EnvironmentLattice.bottom());
+		node.addProperty("values", Environment.bottom());
 	}
 
 	public static void initNodeTransferFunction(Node node) {
@@ -138,8 +138,18 @@ public class ValueFlowAnalysis {
 		for (Node root : roots) {
 			if (root.interval > intervalBoundary)
 				continue;
+			root.getProperty("values").lattice = root.getProperty("values").init.eval(root);
+		}
+		for (Node node : nodeset) {
+			if (node.interval > intervalBoundary)
+				continue;
 			{
-				root.getProperty("values").lattice = root.getProperty("values").init.eval(root);
+				Lattice init = node.getProperty("values").lattice;
+				for (Node pred : g.parentsOf(node)) {
+					Lattice live_o = pred.getProperty("values").transfer.eval(pred);
+					init = init.lub(live_o);
+				}
+				node.getProperty("values").lattice = init;
 			}
 		}
 		while (!worklist.isEmpty()) {
@@ -175,102 +185,113 @@ public class ValueFlowAnalysis {
 	}
 }
 
-class ValueLattice extends Lattice {
-	public ValueValue value;
-	
-	ValueLattice(IStrategoTerm v, Set<CfgNodeId> origin) {
-		this.value = new ValueValue(v, origin);
-	}
-	
-	static ValueLattice bottom() {
-		return new ValueLattice(new StrategoAppl(new StrategoConstructor("Bottom", 0), new IStrategoTerm[] {}, null), null);
-	}
+class Value extends Lattice {
+	ConstProp value;
 
-	static ValueLattice top() {
-		return new ValueLattice(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null), null);
-	}
-	
-	@Override
-	public String toString() {
-		return value.toString();
+	public Value(ConstProp v) {
+		this.value = v;
 	}
 
 	@Override
 	public Object value() {
 		return this.value.value;
 	}
-	
+
+	@Override
+	public String toString() {
+		return value.toString();
+	}
+
 	@Override
 	public Set<CfgNodeId> origin() {
 		return this.value.origin;
 	}
-	
+
+	public static Value bottom() {
+		return new Value(
+				new ConstProp(new StrategoAppl(new StrategoConstructor("Bottom", 0), new IStrategoTerm[] {}, null)));
+	}
+
+	public static Value top() {
+		return new Value(
+				new ConstProp(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null)));
+	}
+
 	@Override
-	public Lattice lub(Lattice right) {
-		HashSet<CfgNodeId> origins = new HashSet<>();
-		origins.addAll(this.origin());
-		origins.addAll(((ValueLattice)right).origin());
-		IStrategoTerm term12976 = Helpers
-				.toTerm(new StrategoTuple(new IStrategoTerm[] { Helpers.toTerm(this.value()), Helpers.toTerm(right.value()) }, null));
-		if (TermUtils.isTuple(term12976) && (TermUtils.isAppl(Helpers.at(term12976, 0))
-				&& (M.appl(Helpers.at(term12976, 0)).getName().equals("Top")
-						&& Helpers.at(term12976, 0).getSubtermCount() == 0))) {
-			return new ValueLattice(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null),
-					origins);
+	public Lattice lub(Lattice other) {
+		Lattice l = this;
+		Lattice r = other;
+		IStrategoTerm l_t = (IStrategoTerm) l.value();
+		IStrategoTerm r_t = (IStrategoTerm) r.value();
+		IStrategoTerm term12 = Helpers
+				.toTerm(new StrategoTuple(new IStrategoTerm[] { Helpers.toTerm(l_t), Helpers.toTerm(r_t) }, null));
+		Lattice result16 = null;
+		if (TermUtils.isTuple(term12)
+				&& (TermUtils.isAppl(Helpers.at(term12, 0)) && (M.appl(Helpers.at(term12, 0)).getName().equals("Top")
+						&& Helpers.at(term12, 0).getSubtermCount() == 0))) {
+			result16 = new Value(
+					new ConstProp(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
+							.withOrigin(l.origin()).withOrigin(r.origin()));
 		}
-		if (TermUtils.isTuple(term12976) && (TermUtils.isAppl(Helpers.at(term12976, 1))
-				&& (M.appl(Helpers.at(term12976, 1)).getName().equals("Top")
-						&& Helpers.at(term12976, 1).getSubtermCount() == 0))) {
-			return new ValueLattice(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null),
-					origins);
+		if (TermUtils.isTuple(term12)
+				&& (TermUtils.isAppl(Helpers.at(term12, 1)) && (M.appl(Helpers.at(term12, 1)).getName().equals("Top")
+						&& Helpers.at(term12, 1).getSubtermCount() == 0))) {
+			result16 = new Value(
+					new ConstProp(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
+							.withOrigin(l.origin()).withOrigin(r.origin()));
 		}
-		if (TermUtils.isTuple(term12976) && (TermUtils.isAppl(Helpers.at(term12976, 0)) && (M
-				.appl(Helpers.at(term12976, 0)).getName().equals("Const")
-				&& (Helpers.at(term12976, 0).getSubtermCount() == 1 && (TermUtils.isAppl(Helpers.at(term12976, 1))
-						&& (M.appl(Helpers.at(term12976, 1)).getName().equals("Const")
-								&& Helpers.at(term12976, 1).getSubtermCount() == 1)))))) {
-			IStrategoTerm i_t = Helpers.at(Helpers.at(term12976, 0), 0);
-			IStrategoTerm j_t = Helpers.at(Helpers.at(term12976, 1), 0);
-			return (boolean) i_t.equals(j_t)
-					? new ValueLattice(new StrategoAppl(new StrategoConstructor("Const", 1),
-							new IStrategoTerm[] { Helpers.toTerm(i_t) }, null), origins)
-					: new ValueLattice(
-							new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null),
-							origins);
+		if (TermUtils.isTuple(term12)
+				&& (TermUtils.isAppl(Helpers.at(term12, 0)) && (M.appl(Helpers.at(term12, 0)).getName().equals("Const")
+						&& (Helpers.at(term12, 0).getSubtermCount() == 1 && (TermUtils.isAppl(Helpers.at(term12, 1))
+								&& (M.appl(Helpers.at(term12, 1)).getName().equals("Const")
+										&& Helpers.at(term12, 1).getSubtermCount() == 1)))))) {
+			IStrategoTerm i_t = Helpers.at(Helpers.at(term12, 0), 0);
+			IStrategoTerm j_t = Helpers.at(Helpers.at(term12, 1), 0);
+			result16 = (boolean) i_t.equals(j_t)
+					? new Value(new ConstProp(new StrategoAppl(new StrategoConstructor("Const", 1),
+							new IStrategoTerm[] { Helpers.toTerm(i_t) }, null)).withOrigin(l.origin())
+									.withOrigin(r.origin()))
+					: new Value(new ConstProp(
+							new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
+									.withOrigin(l.origin()).withOrigin(r.origin()));
 		}
-		if (TermUtils.isTuple(term12976) && (TermUtils.isAppl(Helpers.at(term12976, 1))
-				&& (M.appl(Helpers.at(term12976, 1)).getName().equals("Bottom")
-						&& Helpers.at(term12976, 1).getSubtermCount() == 0))) {
-			return new ValueLattice((IStrategoTerm)this.value(), origins);
+		if (TermUtils.isTuple(term12)
+				&& (TermUtils.isAppl(Helpers.at(term12, 1)) && (M.appl(Helpers.at(term12, 1)).getName().equals("Bottom")
+						&& Helpers.at(term12, 1).getSubtermCount() == 0))) {
+			result16 = new Value(new ConstProp(l_t).withOrigin(l.origin()).withOrigin(r.origin()));
 		}
-		if (TermUtils.isTuple(term12976) && (TermUtils.isAppl(Helpers.at(term12976, 0))
-				&& (M.appl(Helpers.at(term12976, 0)).getName().equals("Bottom")
-						&& Helpers.at(term12976, 0).getSubtermCount() == 0))) {
-			return new ValueLattice((IStrategoTerm)right.value(), origins);
+		if (TermUtils.isTuple(term12)
+				&& (TermUtils.isAppl(Helpers.at(term12, 0)) && (M.appl(Helpers.at(term12, 0)).getName().equals("Bottom")
+						&& Helpers.at(term12, 0).getSubtermCount() == 0))) {
+			result16 = new Value(new ConstProp(r_t).withOrigin(l.origin()).withOrigin(r.origin()));
 		}
-		throw new RuntimeException("Could not match term '" + term12976 + "'.");
+		if (result16 == null) {
+			throw new RuntimeException("Could not match term");
+		}
+		return result16;
 	}
 }
 
-class EnvironmentLattice extends Lattice {
-	MapLattice value;
-	
-	EnvironmentLattice(MapLattice v) {
-		this.value = v;
+class Environment extends MapLattice {
+	public Environment(MapLattice v) {
+		super(v);
 	}
-	
-	static EnvironmentLattice bottom() {
-		return new EnvironmentLattice(MapLattice.bottom());
+
+	public static Environment bottom() {
+		return new Environment(MapLattice.bottom());
+	}
+
+	public static Environment top() {
+		return new Environment(MapLattice.top());
 	}
 
 	@Override
-	public Lattice lub(Lattice o) {
-		return new EnvironmentLattice((MapLattice) value.lub((((EnvironmentLattice) o).value)));
-	}
-
-	@Override
-	public Object value() {
-		return this.value.value();
+	public Lattice lub(Lattice other) {
+		Lattice l = this;
+		Lattice r = other;
+		MapLattice l_t = (MapLattice) l;
+		MapLattice r_t = (MapLattice) r;
+		return new Environment((MapLattice) new MapLattice(l_t).lub(r_t));
 	}
 }
 
@@ -286,7 +307,7 @@ class TransferFunction0 extends TransferFunction {
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
-		return new EnvironmentLattice(new MapLattice((Map)UserFunctions.values_f(prev_t)));
+		return UserFunctions.values_f(prev_t);
 	}
 }
 
@@ -295,21 +316,25 @@ class TransferFunction1 extends TransferFunction {
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
+		IStrategoTerm t_t = term;
 		IStrategoTerm n_t = Helpers.at(term, 0);
-		Map result = new HashMap();
-		for (Map.Entry<Object, Object> e : ((Map<Object, Object>) UserFunctions.values_f(prev_t)).entrySet()) {
-			Object k_t = e.getKey();
-			Object v_t = e.getValue();
+		Map result17 = new HashMap();
+		for (Map.Entry<Object, Object> entry : new MapLattice(UserFunctions.values_f(prev_t))) {
+			Object k_t = entry.getKey();
+			Object v_t = entry.getValue();
 			if (!k_t.equals(n_t)) {
-				result.put(k_t, v_t);
+				result17.put(k_t, v_t);
 			}
 		}
-		Lattice lhs = new EnvironmentLattice(new MapLattice(result));
-		HashSet<CfgNodeId> origin = new HashSet<>();
-		origin.add(node.getId());
-		Lattice rhs = new EnvironmentLattice(new MapLattice(MapUtils.create(((IStrategoString) n_t).stringValue(), new ValueLattice(
-				new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null), origin))));
-		return lhs.lub(rhs);
+		MapLattice prevmap_t = new MapLattice(result17);
+		Environment previous_t = (Environment) new Environment(prevmap_t);
+		MapLattice newmap_t = (MapLattice) new MapLattice(MapUtils.create(((IStrategoString) n_t).stringValue(),
+				new Value(
+						new ConstProp(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
+								.withOrigin(Helpers.getTermPosition(t_t)))));
+		Environment new_t = (Environment) new Environment(newmap_t);
+		Environment result_t = (Environment) new Environment(previous_t).lub(new_t);
+		return result_t;
 	}
 }
 
@@ -318,23 +343,27 @@ class TransferFunction2 extends TransferFunction {
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
+		IStrategoTerm t_t = term;
 		IStrategoTerm n_t = Helpers.at(term, 0);
 		IStrategoTerm i_t = Helpers.at(Helpers.at(term, 1), 0);
-		Map result = new HashMap();
-		for (Map.Entry<Object, Object> e : ((Map<Object, Object>) UserFunctions.values_f(prev_t)).entrySet()) {
-			Object k_t = e.getKey();
-			Object v_t = e.getValue();
+		Map result18 = new HashMap();
+		for (Map.Entry<Object, Object> entry : new MapLattice(UserFunctions.values_f(prev_t))) {
+			Object k_t = entry.getKey();
+			Object v_t = entry.getValue();
 			if (!k_t.equals(n_t)) {
-				result.put(k_t, v_t);
+				result18.put(k_t, v_t);
 			}
 		}
-		Lattice lhs = new EnvironmentLattice(new MapLattice(result));
-		HashSet<CfgNodeId> origin = new HashSet<>();
-		origin.add(node.getId());
-		Lattice rhs = new EnvironmentLattice(new MapLattice(MapUtils.create(((IStrategoString) n_t).stringValue(),
-				new ValueLattice(new StrategoAppl(new StrategoConstructor("Const", 1),
-						new IStrategoTerm[] { Helpers.toTerm(i_t) }, null), origin))));
-		return lhs.lub(rhs);
+		MapLattice prevmap_t = new MapLattice(result18);
+		Environment previous_t = (Environment) new Environment(prevmap_t);
+		MapLattice newmap_t = (MapLattice) new MapLattice(
+				MapUtils.create(((IStrategoString) n_t).stringValue(),
+						new Value(new ConstProp(new StrategoAppl(new StrategoConstructor("Const", 1),
+								new IStrategoTerm[] { Helpers.toTerm(i_t) }, null))
+										.withOrigin(Helpers.getTermPosition(t_t)))));
+		Environment new_t = (Environment) new Environment(newmap_t);
+		Environment result_t = (Environment) new Environment(previous_t).lub(new_t);
+		return result_t;
 	}
 }
 
@@ -342,13 +371,13 @@ class TransferFunction3 extends TransferFunction {
 	@Override
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
-		return EnvironmentLattice.bottom();
+		return Environment.bottom();
 	}
 }
 
 class UserFunctions {
-	public static Object values_f(Object o) {
+	public static Lattice values_f(Object o) {
 		Node node = (Node) o;
-		return node.getProperty("values").lattice.value();
+		return node.getProperty("values").lattice;
 	}
 }

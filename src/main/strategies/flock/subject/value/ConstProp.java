@@ -8,18 +8,33 @@ import flock.subject.common.CfgNodeId;
 import flock.subject.common.SetUtils;
 import flock.subject.common.Lattice;
 
-public class ValueValue {
+public class ConstProp {
 	public IStrategoTerm value;
 	public Set<CfgNodeId> origin;
 	
-	ValueValue(IStrategoTerm value, CfgNodeId origin) {
+	ConstProp(IStrategoTerm value) {
+		this.value = value;
+		this.origin = SetUtils.create();
+	}
+	
+	ConstProp(IStrategoTerm value, CfgNodeId origin) {
 		this.value = value;
 		this.origin = SetUtils.create(origin);
 	}
 	
-	ValueValue(IStrategoTerm value, Set<CfgNodeId> origins) {
+	ConstProp(IStrategoTerm value, Set<CfgNodeId> origins) {
 		this.value = value;
 		this.origin = origins;
+	}
+	
+	public ConstProp withOrigin(Set<CfgNodeId> id) {
+		this.origin.addAll(id);
+		return this;
+	}
+	
+	public ConstProp withOrigin(CfgNodeId id) {
+		this.origin.add(id);
+		return this;
 	}
 	
 	@Override
@@ -36,10 +51,10 @@ public class ValueValue {
 	
 	@Override
 	public boolean equals(Object obj) {
-		if (!(obj instanceof ValueValue)) {
+		if (!(obj instanceof ConstProp)) {
 			return false;
 		}
-		ValueValue other = (ValueValue) obj;
+		ConstProp other = (ConstProp) obj;
 				
 		return this.value.equals(other.value) && this.origin.equals(other.origin);
 	}

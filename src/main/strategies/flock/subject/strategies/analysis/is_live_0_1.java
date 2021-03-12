@@ -17,12 +17,11 @@ import java.util.stream.Collectors;
 import org.strategoxt.lang.Context;
 import org.strategoxt.lang.Strategy;
 
-import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Graph.Node;
 import flock.subject.common.SetUtils;
 import flock.subject.strategies.Program;
-import flock.subject.live.LiveValue;
+import flock.subject.live.Live;
 
 import org.spoofax.terms.ParseError;
 import org.spoofax.terms.Term;
@@ -46,7 +45,7 @@ public class is_live_0_1 extends Strategy {
         //Program.log("graphviz", "after is_live update: " + Program.instance.graph.toGraphviz().replace('\n', '\t'));
         
         HashSet<String> names = new HashSet<>();
-        for (LiveValue lv : (HashSet<LiveValue>) node.getProperty("live").lattice.value()) {
+        for (Live lv : (HashSet<Live>) node.getProperty("live").lattice.value()) {
 			names.add(((IStrategoString)lv.value).stringValue());
         }
         

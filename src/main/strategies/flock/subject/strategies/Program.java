@@ -16,7 +16,6 @@ import org.strategoxt.lang.Context;
 
 import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.common.Analysis;
-import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Graph;
 import flock.subject.common.Graph.Node;

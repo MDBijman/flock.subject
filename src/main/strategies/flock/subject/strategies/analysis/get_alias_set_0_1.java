@@ -17,7 +17,6 @@ import java.util.Set;
 import org.strategoxt.lang.Context;
 import org.strategoxt.lang.Strategy;
 
-import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.SetUtils;
 import flock.subject.common.Graph.Node;

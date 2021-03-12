@@ -3,25 +3,28 @@ properties
   live: MaySet[name]
 
 property rules
-  live(_.end) = {}
+  live(_.end) = {} as MaySet[name]
   
-  live(Ref(n) -> next) = result
+  live(t@Ref(n) -> next) = result
   where
-    previous = live(next)
-    current = {n: Live}
-    result = previous \/ current
+    previous: MaySet[name] = live(next)
+    current : MaySet[name] = {n: Live{position(t)}} as MaySet[name]
+    result  : MaySet[name] = previous \[MaySet[name]]/ current
 
-  live(Deref(n) -> next) = result
+  live(t@Deref(n) -> next) = result
   where
-    previous = live(next)
-    current = {n: Live}
-    result = previous \/ current
+    previous: MaySet[name] = live(next)
+    current : MaySet[name] = {n: Live{position(t)}} as MaySet[name]
+    result  : MaySet[name] = previous \[MaySet[name]]/ current
     
-  live(DerefAssign(n, _) -> next) = result
+  live(t@DerefAssign(n, _) -> next) = result
   where
-    previous = live(next)
-    current = {n: Live}
-    result = previous \/ current
+    previous: MaySet[name] = live(next)
+    current : MaySet[name] = {n: Live{position(t)}} as MaySet[name]
+    result  : MaySet[name] = previous \[MaySet[name]]/ current
     
-  live(Assign(n, e) -> next) = { m | m <- live(next), n != m }
+  live(Assign(n, e) -> next) = result
+  where
+    result: MaySet[name] = { m | m <- live(next), n != m }
+    
   live(_ -> next) = live(next)

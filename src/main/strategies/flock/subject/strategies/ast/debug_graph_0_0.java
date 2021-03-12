@@ -11,7 +11,6 @@ import java.io.IOException;
 import org.strategoxt.lang.Context;
 import org.strategoxt.lang.Strategy;
 
-import flock.subject.common.CfgNode;
 import flock.subject.common.SetUtils;
 import flock.subject.strategies.Program;
 import flock.subject.strategies.analysis.analyse_program_0_0;

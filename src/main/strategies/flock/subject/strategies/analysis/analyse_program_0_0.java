@@ -6,7 +6,6 @@ import org.strategoxt.lang.Context;
 import org.strategoxt.lang.Strategy;
 
 import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.common.CfgNode;
 import flock.subject.common.Lattice;
 import flock.subject.live.LiveVariablesFlowAnalysis;
 import flock.subject.strategies.Program;

@@ -6,6 +6,7 @@ import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.interpreter.terms.IStrategoAppl;
 import org.spoofax.interpreter.terms.IStrategoTuple;
 import org.spoofax.interpreter.terms.IStrategoList;
+import org.spoofax.interpreter.terms.IStrategoString;
 import org.spoofax.interpreter.terms.IStrategoInt;
 import org.spoofax.terms.io.TAFTermReader;
 import org.spoofax.terms.TermFactory;
@@ -32,23 +33,23 @@ import org.spoofax.terms.StrategoConstructor;
 import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
-import flock.subject.common.CfgNode;
 import flock.subject.common.Graph;
 import flock.subject.common.Graph.Node;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
-import flock.subject.common.Lattice.MaySetLattice;
+import flock.subject.common.Lattice.MaySet;
+import flock.subject.common.Lattice.MustSet;
+import flock.subject.common.Lattice.MapLattice;
 import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
-import flock.subject.live.LiveValue;
+import flock.subject.live.Live;
 import flock.subject.live.LiveVariablesFlowAnalysis;
-import flock.subject.strategies.Program;
 import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
-import flock.subject.value.ValueValue;
+import flock.subject.value.ConstProp;
 
 public class LiveVariablesFlowAnalysis {
 	public static void main(String[] args) throws IOException {
@@ -59,7 +60,7 @@ public class LiveVariablesFlowAnalysis {
 	}
 
 	public static void initNodeValue(Node node) {
-		node.addProperty("live", MaySetLattice.bottom());
+		node.addProperty("live", MaySet.bottom());
 	}
 
 	public static void initNodeTransferFunction(Node node) {
@@ -120,7 +121,7 @@ public class LiveVariablesFlowAnalysis {
 			Collection<Node> dirty) {
 		performDataAnalysis(g, roots, nodeset, dirty, -Float.MAX_VALUE);
 	}
-	
+
 	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
 			Collection<Node> dirty, float intervalBoundary) {
 		Queue<Node> worklist = new LinkedBlockingQueue<>();
@@ -143,19 +144,19 @@ public class LiveVariablesFlowAnalysis {
 		for (Node root : roots) {
 			if (root.interval < intervalBoundary)
 				continue;
-			{
-				root.getProperty("live").lattice = root.getProperty("live").init.eval(root);
-			}
+			root.getProperty("live").lattice = root.getProperty("live").init.eval(root);
 		}
 		for (Node node : nodeset) {
 			if (node.interval < intervalBoundary)
 				continue;
-			Lattice init = node.getProperty("live").lattice;
-			for (Node child : g.childrenOf(node)) {
-				Lattice live_o = child.getProperty("live").transfer.eval(child);
-				init = init.lub(live_o);
+			{
+				Lattice init = node.getProperty("live").lattice;
+				for (Node pred : g.childrenOf(node)) {
+					Lattice live_o = pred.getProperty("live").transfer.eval(pred);
+					init = init.lub(live_o);
+				}
+				node.getProperty("live").lattice = init;
 			}
-			node.getProperty("live").lattice = init;
 		}
 		while (!worklist.isEmpty()) {
 			Node node = worklist.poll();
@@ -204,7 +205,7 @@ class TransferFunction0 extends TransferFunction {
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node next_t = node;
-		return new MaySetLattice((Set)UserFunctions.live_f(next_t));
+		return UserFunctions.live_f(next_t);
 	}
 }
 
@@ -215,15 +216,14 @@ class TransferFunction1 extends TransferFunction {
 		Node next_t = node;
 		IStrategoTerm n_t = Helpers.at(term, 0);
 		IStrategoTerm e_t = Helpers.at(term, 1);
-		return new MaySetLattice((Set) ((Supplier) () -> {
-			Set result = new HashSet();
-			for (Object m_t : (Set)UserFunctions.live_f(next_t)) {
-				if (!n_t.equals(m_t)) {
-					result.add(m_t);
-				}
+		Set result17 = new HashSet();
+		for (Object m_t : (Set) UserFunctions.live_f(next_t).value()) {
+			if (!n_t.equals(m_t)) {
+				result17.add(m_t);
 			}
-			return result;
-		}).get());
+		}
+		MaySet result_t = new MaySet(result17);
+		return result_t;
 	}
 }
 
@@ -232,11 +232,12 @@ class TransferFunction2 extends TransferFunction {
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node next_t = node;
+		IStrategoTerm t_t = term;
 		IStrategoTerm n_t = Helpers.at(term, 0);
-		Object previous_t = (Set)UserFunctions.live_f(next_t);
-		Object current_t = SetUtils.create(new LiveValue(n_t, node.getId()));
-		Object result_t = SetUtils.union(previous_t, current_t);
-		return new MaySetLattice((Set)result_t);
+		MaySet previous_t = (MaySet) UserFunctions.live_f(next_t);
+		MaySet current_t = (MaySet) new MaySet(SetUtils.create(new Live(n_t).withOrigin(Helpers.getTermPosition(t_t))));
+		MaySet result_t = (MaySet) new MaySet(previous_t).lub(current_t);
+		return result_t;
 	}
 }
 
@@ -245,11 +246,12 @@ class TransferFunction3 extends TransferFunction {
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node next_t = node;
+		IStrategoTerm t_t = term;
 		IStrategoTerm n_t = Helpers.at(term, 0);
-		Object previous_t = (Set)UserFunctions.live_f(next_t);
-		Object current_t = SetUtils.create(new LiveValue(n_t, node.getId()));
-		Object result_t = SetUtils.union(previous_t, current_t);
-		return new MaySetLattice((Set)result_t);
+		MaySet previous_t = (MaySet) UserFunctions.live_f(next_t);
+		MaySet current_t = (MaySet) new MaySet(SetUtils.create(new Live(n_t).withOrigin(Helpers.getTermPosition(t_t))));
+		MaySet result_t = (MaySet) new MaySet(previous_t).lub(current_t);
+		return result_t;
 	}
 }
 
@@ -258,11 +260,12 @@ class TransferFunction4 extends TransferFunction {
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node next_t = node;
+		IStrategoTerm t_t = term;
 		IStrategoTerm n_t = Helpers.at(term, 0);
-		Object previous_t = (Set)UserFunctions.live_f(next_t);
-		Object current_t = SetUtils.create(new LiveValue(n_t, node.getId()));
-		Object result_t = SetUtils.union(previous_t, current_t);
-		return new MaySetLattice((Set)result_t);
+		MaySet previous_t = (MaySet) UserFunctions.live_f(next_t);
+		MaySet current_t = (MaySet) new MaySet(SetUtils.create(new Live(n_t).withOrigin(Helpers.getTermPosition(t_t))));
+		MaySet result_t = (MaySet) new MaySet(previous_t).lub(current_t);
+		return result_t;
 	}
 }
 
@@ -270,13 +273,13 @@ class TransferFunction5 extends TransferFunction {
 	@Override
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
-		return new MaySetLattice(SetUtils.create());
+		return new MaySet(SetUtils.create());
 	}
 }
 
 class UserFunctions {
-	public static Object live_f(Object o) {
+	public static Lattice live_f(Object o) {
 		Node node = (Node) o;
-		return node.getProperty("live").lattice.value();
+		return node.getProperty("live").lattice;
 	}
 }

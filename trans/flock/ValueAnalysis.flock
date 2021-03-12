@@ -4,9 +4,24 @@ properties
   values: Environment
 
 property rules
-  values(_.end) = {[Map[name, Value]]}
-  values(prev -> Assign(n, Int(i))) = { k |-> v | (k |-> v)  <- values(prev), k != n } \[Environment]/ {n: name |-> Const(i): Value}
-  values(prev -> Assign(n, _))      = { k |-> v | (k |-> v)  <- values(prev), k != n } \[Environment]/ {n: name |-> Top(): Value}
+  values(_.end) = Environment.bottom
+
+  values(prev -> t@Assign(n, Int(i))) = result
+  where
+    prevmap : Map[name, Value] = { k |-> v | (k |-> v) <- values(prev) as Map[name, Value], k != n }
+    previous: Environment = prevmap as Environment
+    newmap  : Map[name, Value] = {n: name |-> Const(i): ConstProp{position(t)} as Value} as Map[name, Value]
+    new     : Environment = newmap as Environment
+    result  : Environment = previous \[Environment]/ new
+
+  values(prev -> t@Assign(n, _)) = result
+  where
+    prevmap : Map[name, Value] = { k |-> v | (k |-> v) <- values(prev) as Map[name, Value], k != n }
+    previous: Environment = prevmap as Environment
+    newmap  : Map[name, Value] = {n: name |-> Top(): ConstProp{position(t)} as Value} as Map[name, Value]
+    new     : Environment = newmap as Environment
+    result  : Environment = previous \[Environment]/ new
+    
   values(prev -> _) = values(prev)
 
 types
@@ -18,18 +33,18 @@ types
 lattices
   Value where
     type = ConstProp
-    bottom = Bottom()
-    top = Top()
+    bottom = Bottom(): ConstProp as Value
+    top = Top(): ConstProp as Value
     lub(l: Value, r: Value) = match (l, r) with
-      | (Top(), _) => Top(): Value{l,r}
-      | (_, Top()) => Top(): Value{l,r}
-      | (Const(i), Const(j)) => if i == j then Const(i): Value{l,r} else Top(): Value{l,r}
-      | (_, Bottom()) => l: Value{l,r}
-      | (Bottom(), _) => r: Value{l,r}
+      | (Top(), _) => Top(): ConstProp{l, r} as Value
+      | (_, Top()) => Top(): ConstProp{l, r} as Value
+      | (Const(i), Const(j)) => if i == j then (Const(i): ConstProp{l, r} as Value) else (Top(): ConstProp{l, r} as Value)
+      | (_, Bottom()) => l: ConstProp{l, r} as Value
+      | (Bottom(), _) => r: ConstProp{l, r} as Value
       
   Environment where
     type = Map[name, Value]
-    bottom = Map[name, Value].bottom
-    top = Map[name, Value].top
-    lub(l, r) = Map[name, Value].lub(l, r)
+    bottom = Map[name, Value].bottom as Environment
+    top = Map[name, Value].top as Environment
+    lub(l: Map[name, Value], r: Map[name, Value]) = Map[name, Value].lub(l, r)
     

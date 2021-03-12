@@ -11,6 +11,7 @@ import org.spoofax.terms.io.TAFTermReader;
 import org.spoofax.terms.TermFactory;
 import java.io.IOException;
 import org.spoofax.terms.util.M;
+import org.spoofax.terms.util.NotImplementedException;
 import org.spoofax.terms.util.TermUtils;
 import java.util.HashSet;
 import java.util.Set;
@@ -32,7 +33,6 @@ import org.spoofax.terms.StrategoConstructor;
 import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
-import flock.subject.common.CfgNode;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
@@ -40,10 +40,10 @@ import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
-import flock.subject.live.LiveValue;
+import flock.subject.live.Live;
 import flock.subject.live.LiveVariablesFlowAnalysis;
 import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.value.ValueValue;
+import flock.subject.value.ConstProp;
 
 public abstract class Lattice {
 	public abstract Lattice lub(Lattice o);
@@ -53,7 +53,7 @@ public abstract class Lattice {
 	public Set<CfgNodeId> origin() {
 		return new UniversalSet();
 	}
-	
+
 	public boolean leq(Lattice r) {
 		return this.lub(r).equals(r);
 	}
@@ -74,19 +74,19 @@ public abstract class Lattice {
 	 * Default Implementations
 	 */
 	
-	public static class MustSetLattice extends Lattice {
+	public static class MustSet extends Lattice {
 		Set value;
 		
-		public MustSetLattice(Set v) {
+		public MustSet(Set v) {
 			this.value = v;
 		}
 		
-		public static MustSetLattice bottom() {
-			return new MustSetLattice(new UniversalSet());
+		public static MustSet bottom() {
+			return new MustSet(new UniversalSet());
 		}
 
-		public static MustSetLattice top() {
-			return new MustSetLattice(new HashSet());
+		public static MustSet top() {
+			return new MustSet(new HashSet());
 		}
 		
 		@Override
@@ -96,7 +96,7 @@ public abstract class Lattice {
 
 		@Override
 		public Lattice lub(Lattice r) {
-			return new MustSetLattice(SetUtils.intersection(this.value(), r.value()));
+			return new MustSet(SetUtils.intersection(this.value(), r.value()));
 		}
 
 		@Override
@@ -106,7 +106,7 @@ public abstract class Lattice {
 
 		@Override
 		public Lattice glb(Lattice r) {
-			return new MustSetLattice(SetUtils.union(this.value(), r.value()));
+			return new MustSet(SetUtils.union(this.value(), r.value()));
 		}
 
 		@Override
@@ -115,19 +115,24 @@ public abstract class Lattice {
 		}
 	}
 
-	public static class MaySetLattice extends Lattice {
+	public static class MaySet extends Lattice {
 		Set value;
 		
-		public MaySetLattice(Set v) {
+		public MaySet(MaySet v) {
+			this.value = new HashSet<>();
+			this.value.addAll(v.value);
+		}
+		
+		public MaySet(Set v) {
 			this.value = v;
 		}
 		
-		public static MaySetLattice bottom() {
-			return new MaySetLattice(new HashSet());
+		public static MaySet bottom() {
+			return new MaySet(new HashSet());
 		}
 
-		public static MaySetLattice top() {
-			return new MaySetLattice(new UniversalSet());
+		public static MaySet top() {
+			return new MaySet(new UniversalSet());
 		}
 
 		@Override
@@ -142,7 +147,7 @@ public abstract class Lattice {
 
 		@Override
 		public Lattice lub(Lattice r) {
-			return new MaySetLattice(SetUtils.union(this.value(), r.value()));
+			return new MaySet(SetUtils.union(this.value(), r.value()));
 		}
 
 		@Override
@@ -152,7 +157,7 @@ public abstract class Lattice {
 
 		@Override
 		public Lattice glb(Lattice r) {
-			return new MaySetLattice(SetUtils.intersection(this.value(), r.value()));
+			return new MaySet(SetUtils.intersection(this.value(), r.value()));
 		}
 
 		@Override
@@ -161,9 +166,17 @@ public abstract class Lattice {
 		}
 	}
 
-	public static class MapLattice extends Lattice {
+	public static class MapLattice extends Lattice implements Iterable<Map.Entry> {
 		Map value;
 
+		public MapLattice(Lattice o) {
+			this.value = ((MapLattice) o).value;
+		}
+		
+		public MapLattice(MapLattice o) {
+			this.value = o.value;
+		}
+		
 		public MapLattice(Map v) {
 			this.value = v;
 		}
@@ -171,7 +184,15 @@ public abstract class Lattice {
 		public static MapLattice bottom() {
 			return new MapLattice(new HashMap());
 		}
+		
+		public static MapLattice top() {
+			throw new NotImplementedException();
+		}
 
+		public Iterator<Map.Entry> iterator() {
+			return value.entrySet().iterator();
+		}
+		
 		@Override
 		public Lattice lub(Lattice o) {
 			return new MapLattice(MapUtils.union(this, o));
