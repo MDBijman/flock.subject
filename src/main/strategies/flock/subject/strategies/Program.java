@@ -234,6 +234,11 @@ public class Program {
 		cumulMap.putIfAbsent(tag, 0L);
 	}
 	
+	public static void resetTimers() {
+		runningMap.clear();
+		cumulMap.clear();
+	}
+	
 	public static long endTime(String tag) {
 		long t = System.currentTimeMillis() - runningMap.get(tag);
 		runningMap.remove(tag);

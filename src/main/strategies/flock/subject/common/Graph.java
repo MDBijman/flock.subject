@@ -542,7 +542,7 @@ public class Graph {
 		StringBuilder result = new StringBuilder();
 		result.append("digraph G { ");
 		for (Node node : this.nodes.values()) {
-			Property h = node.properties.get("values");
+			Property h = node.properties.get("live");
 			String termString = node.term.toString(1).replace("\\", "\\\\").replace("\t", "\\t").replace("\b",
 					"\\b").replace("\n", "\\n").replace("\r", "\\r").replace("\f", "\\f").replace("\'", "\\'").replace("\"",
 					"\\\"");
@@ -552,6 +552,7 @@ public class Graph {
 			String propString = (h == null ? "" : (h.lattice.value() == null ? "" : h.lattice.value().toString())).replace("\\", "\\\\").replace("\t", "\\t").replace("\b",
 					"\\b").replace("\n", "\\n").replace("\r", "\\r").replace("\f", "\\f").replace("\'", "\\'").replace("\"",
 					"\\\"");
+			
 			result.append(node.getId().getId() + "[label=\"" + rootString + leafString + node.getId().getId() + " - "
 					+ intervalString + " " + termString + " " + propString + "\"];");
 
@@ -560,6 +561,7 @@ public class Graph {
 			}
 		}
 		result.append("} ");
+		Program.printDebug(result.toString());
 		Program.endTime("graphviz");
 		return result.toString();
 	}

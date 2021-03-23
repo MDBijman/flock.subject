@@ -26,7 +26,7 @@ public class analyse_program_0_0 extends Strategy {
 		try {
 			context.getIOAgent().printError("Start Analysis");
 			context.getIOAgent().printError("Creating CFG");
-			
+			Program.resetTimers();
 			Program.instance.createControlFlowGraph(context, current);
 			Program.log("graphviz", Program.instance.graph.toGraphviz());
 			Program.log("api", "analyse_program");

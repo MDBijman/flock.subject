@@ -7,6 +7,12 @@ signature
   constructors
     Const : INT -> Const
 
+strategies
+
+  fixpoint-opt(s|0) = id
+  fixpoint-opt(s|bound): p -> <s < (fixpoint-opt(s | <dec> bound)) + id> p
+  where <not(equal(|0))> bound
+
 strategies 
 
   optimize-program: p -> p'
@@ -17,29 +23,44 @@ strategies
      p' := <flock-add-id> p
     ; <flock-analyse-program> p'
     ; <flock-debug-graph> ()
-    ; p'' := <fixpoint-opt(optimize-program-inner | 3000)> p'
+    ; pf  := <forward-pass>  p'
+    ; pb  := <backward-pass> pf
+    ; p'' := <cleanup-pass>  pb
 
-  fixpoint-opt(s|0) = id
-  fixpoint-opt(s|bound): p -> <s < (fixpoint-opt(s | <dec> bound)) + id> p
-  where <not(equal(|0))> bound
-
-  optimize-program-inner: p -> p'
+  forward-pass = fixpoint-opt(forward-pass-single | 3000)
+  forward-pass-single: p -> p'
   where 
-   p' := <oncetd(opt-remove + opt-replace)> p
+   p' := <oncetd(opt-forward)> p
  ; <flock-update> p'
-    
-  opt-replace: p -> p''
-  where 
-    p'  := <replacing-optimizations> p 
-  ; p'' := <flock-replace-node(|p)> p'
  
-  opt-remove: p -> p'
+  opt-forward: p -> p''
+  where 
+    p'  := <forward-optimizations> p 
+  ; p'' := <flock-replace-node(|p)> p'
+    
+  backward-pass = fixpoint-opt(backward-pass-single | 3000)
+  backward-pass-single: p -> p'
   where
-    (p', dead-nodes) := <removing-optimizations> p
+    p' := <oncetd(opt-backward)> p
+  ; <flock-update> p'
+  opt-backward: p -> p''
+  where 
+    p'  := <backward-optimizations> p 
+  ; p'' := <flock-replace-node(|p)> p'
+  
+  cleanup-pass = fixpoint-opt(cleanup-pass-single | 1000)
+  cleanup-pass-single: p -> p'
+  where 
+    p' := <oncetd(opt-cleanup)> p
+  ; <flock-update> p' 
+  opt-cleanup: p -> p'
+  where 
+    (p', dead-nodes) := <cleanup-optimizations> p
   ; <map(flock-remove-node)> dead-nodes
   
-  replacing-optimizations = fold-expressions + propagate-constant-read + remove-dead-heap-store + remove-dead-store + replace-dead-if
-  removing-optimizations = remove-skips + remove-empty-blocks
+  forward-optimizations  = fold-expressions + propagate-constant-read + replace-dead-if
+  backward-optimizations = remove-dead-store + remove-dead-heap-store
+  cleanup-optimizations  = remove-skips + remove-empty-blocks
   
 strategies
 
@@ -91,6 +112,7 @@ strategies
 
   replace-dead-if: IfThenElse(e, Skip(), Skip()) -> Skip()
   where <flock-debug> "removing dead if"
+
 
 strategies
 
