@@ -34,9 +34,13 @@ import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
 import flock.subject.common.Graph;
+import flock.subject.common.Analysis;
 import flock.subject.common.Graph.Node;
+import flock.subject.common.Analysis.Direction;
 import flock.subject.common.CfgNodeId;
+import flock.subject.common.Dependency;
 import flock.subject.common.Helpers;
+import flock.subject.common.IHasDependencies;
 import flock.subject.common.Lattice;
 import flock.subject.common.Lattice.MaySet;
 import flock.subject.common.Lattice.MustSet;
@@ -51,12 +55,9 @@ import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
 import flock.subject.value.ConstProp;
 
-public class ValueFlowAnalysis {
-	public static void main(String[] args) throws IOException {
-		IStrategoTerm ast = new TAFTermReader(new TermFactory()).parseFromFile(args[0]);
-		Graph graph = Graph.createCfg(ast);
-		performDataAnalysis(graph);
-		System.out.println(graph.toGraphviz());
+public class ValueFlowAnalysis extends Analysis {
+	public ValueFlowAnalysis() {
+		super("values", Direction.FORWARD);
 	}
 
 	public static void initNodeValue(Node node) {
@@ -84,40 +85,9 @@ public class ValueFlowAnalysis {
 		}
 	}
 
-	public static void performDataAnalysis(Graph g, Node root) {
-		HashSet<Node> nodeset = new HashSet<Node>();
-		nodeset.add(root);
-		performDataAnalysis(g, new HashSet<Node>(), nodeset);
-	}
-
-	public static void performDataAnalysis(Graph g, Collection<Node> nodeset) {
-		performDataAnalysis(g, new HashSet<Node>(), nodeset);
-	}
-
-	public static void performDataAnalysis(Graph g) {
-		performDataAnalysis(g, g.roots(), g.nodes());
-	}
-
-	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset) {
-		performDataAnalysis(g, roots, nodeset, new HashSet<Node>());
-	}
-
-	public static void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty) {
-		performDataAnalysis(g, new HashSet<Node>(), news, dirty);
-	}
-
-	public static void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty,
+	@Override
+	public void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset, Collection<Node> dirty,
 			float intervalBoundary) {
-		performDataAnalysis(g, new HashSet<Node>(), news, dirty, intervalBoundary);
-	}
-
-	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
-			Collection<Node> dirty) {
-		performDataAnalysis(g, roots, nodeset, dirty, Float.MAX_VALUE);
-	}
-
-	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
-			Collection<Node> dirty, float intervalBoundary) {
 		Queue<Node> worklist = new LinkedBlockingQueue<>();
 		HashSet<Node> inWorklist = new HashSet<>();
 		for (Node node : nodeset) {
@@ -185,7 +155,7 @@ public class ValueFlowAnalysis {
 	}
 }
 
-class Value extends Lattice {
+class Value extends Lattice implements IHasDependencies {
 	ConstProp value;
 
 	public Value(ConstProp v) {
@@ -202,11 +172,6 @@ class Value extends Lattice {
 		return value.toString();
 	}
 
-	@Override
-	public Set<CfgNodeId> origin() {
-		return this.value.origin;
-	}
-
 	public static Value bottom() {
 		return new Value(
 				new ConstProp(new StrategoAppl(new StrategoConstructor("Bottom", 0), new IStrategoTerm[] {}, null)));
@@ -220,7 +185,9 @@ class Value extends Lattice {
 	@Override
 	public Lattice lub(Lattice other) {
 		Lattice l = this;
+		IHasDependencies l_d = (IHasDependencies) l;
 		Lattice r = other;
+		IHasDependencies r_d = (IHasDependencies) r;
 		IStrategoTerm l_t = (IStrategoTerm) l.value();
 		IStrategoTerm r_t = (IStrategoTerm) r.value();
 		IStrategoTerm term12 = Helpers
@@ -231,14 +198,14 @@ class Value extends Lattice {
 						&& Helpers.at(term12, 0).getSubtermCount() == 0))) {
 			result16 = new Value(
 					new ConstProp(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
-							.withOrigin(l.origin()).withOrigin(r.origin()));
+							.withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
 		}
 		if (TermUtils.isTuple(term12)
 				&& (TermUtils.isAppl(Helpers.at(term12, 1)) && (M.appl(Helpers.at(term12, 1)).getName().equals("Top")
 						&& Helpers.at(term12, 1).getSubtermCount() == 0))) {
 			result16 = new Value(
 					new ConstProp(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
-							.withOrigin(l.origin()).withOrigin(r.origin()));
+							.withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
 		}
 		if (TermUtils.isTuple(term12)
 				&& (TermUtils.isAppl(Helpers.at(term12, 0)) && (M.appl(Helpers.at(term12, 0)).getName().equals("Const")
@@ -249,26 +216,46 @@ class Value extends Lattice {
 			IStrategoTerm j_t = Helpers.at(Helpers.at(term12, 1), 0);
 			result16 = (boolean) i_t.equals(j_t)
 					? new Value(new ConstProp(new StrategoAppl(new StrategoConstructor("Const", 1),
-							new IStrategoTerm[] { Helpers.toTerm(i_t) }, null)).withOrigin(l.origin())
-									.withOrigin(r.origin()))
+							new IStrategoTerm[] { Helpers.toTerm(i_t) }, null)).withOrigin(l_d.dependencies())
+									.withOrigin(r_d.dependencies()))
 					: new Value(new ConstProp(
 							new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
-									.withOrigin(l.origin()).withOrigin(r.origin()));
+									.withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
 		}
 		if (TermUtils.isTuple(term12)
 				&& (TermUtils.isAppl(Helpers.at(term12, 1)) && (M.appl(Helpers.at(term12, 1)).getName().equals("Bottom")
 						&& Helpers.at(term12, 1).getSubtermCount() == 0))) {
-			result16 = new Value(new ConstProp(l_t).withOrigin(l.origin()).withOrigin(r.origin()));
+			result16 = new Value(new ConstProp(l_t).withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
 		}
 		if (TermUtils.isTuple(term12)
 				&& (TermUtils.isAppl(Helpers.at(term12, 0)) && (M.appl(Helpers.at(term12, 0)).getName().equals("Bottom")
 						&& Helpers.at(term12, 0).getSubtermCount() == 0))) {
-			result16 = new Value(new ConstProp(r_t).withOrigin(l.origin()).withOrigin(r.origin()));
+			result16 = new Value(new ConstProp(r_t).withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
 		}
 		if (result16 == null) {
 			throw new RuntimeException("Could not match term");
 		}
 		return result16;
+	}
+
+	@Override
+	public Set<Dependency> dependencies() {
+		return value.dependencies;
+	}
+
+	@Override
+	public void add(Dependency d) {
+		value.add(d);
+	}
+
+	@Override
+	public boolean remove(Dependency d) {
+		return value.remove(d);
+	}
+
+	@Override
+	public boolean contains(Dependency d) {
+		return value.contains(d);
 	}
 }
 

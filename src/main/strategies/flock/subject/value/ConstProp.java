@@ -5,35 +5,38 @@ import java.util.Set;
 import org.spoofax.interpreter.terms.IStrategoTerm;
 
 import flock.subject.common.CfgNodeId;
+import flock.subject.common.Dependency;
+import flock.subject.common.IHasDependencies;
 import flock.subject.common.SetUtils;
+import flock.subject.common.Value.ValueWithDependencies;
 import flock.subject.common.Lattice;
 
-public class ConstProp {
+public class ConstProp extends ValueWithDependencies {
 	public IStrategoTerm value;
-	public Set<CfgNodeId> origin;
+	public Set<Dependency> dependencies;
 	
 	ConstProp(IStrategoTerm value) {
 		this.value = value;
-		this.origin = SetUtils.create();
+		this.dependencies = SetUtils.create();
 	}
 	
-	ConstProp(IStrategoTerm value, CfgNodeId origin) {
+	ConstProp(IStrategoTerm value, Dependency origin) {
 		this.value = value;
-		this.origin = SetUtils.create(origin);
+		this.dependencies = SetUtils.create(origin);
 	}
 	
-	ConstProp(IStrategoTerm value, Set<CfgNodeId> origins) {
+	ConstProp(IStrategoTerm value, Set<Dependency> dependencies) {
 		this.value = value;
-		this.origin = origins;
+		this.dependencies.addAll(dependencies);
 	}
 	
-	public ConstProp withOrigin(Set<CfgNodeId> id) {
-		this.origin.addAll(id);
+	public ConstProp withOrigin(Set<Dependency> dependencies) {
+		this.dependencies.addAll(dependencies);
 		return this;
 	}
 	
 	public ConstProp withOrigin(CfgNodeId id) {
-		this.origin.add(id);
+		this.dependencies.add(new Dependency(id));
 		return this;
 	}
 	
@@ -41,8 +44,8 @@ public class ConstProp {
 	public String toString() {
 		String pre = "Value(\"" + this.value.toString() + "\", {";
 		StringBuilder sb = new StringBuilder();
-		for(CfgNodeId id : origin) {
-			sb.append(id.getId());
+		for (Dependency dep : dependencies) {
+			sb.append(dep.id.getId());
 			sb.append(",");
 		}
 		String post = "})";
@@ -56,11 +59,35 @@ public class ConstProp {
 		}
 		ConstProp other = (ConstProp) obj;
 				
-		return this.value.equals(other.value) && this.origin.equals(other.origin);
+		return this.value.equals(other.value) && this.dependencies.equals(other.dependencies);
 	}
 	
 	@Override
 	public int hashCode() {
 		return value.hashCode();
+	}
+
+	/*
+	 * IHasDependencies
+	 */
+	
+	@Override
+	public Set<Dependency> dependencies() {
+		return this.dependencies;
+	}
+
+	@Override
+	public void add(Dependency d) {
+		this.dependencies.add(d);
+	}
+
+	@Override
+	public boolean remove(Dependency d) {
+		return this.dependencies.remove(d);		
+	}
+	
+	@Override
+	public boolean contains(Dependency d) {
+		return this.dependencies.contains(d);		
 	}
 }

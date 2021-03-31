@@ -34,7 +34,9 @@ import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
 import flock.subject.common.Graph;
+import flock.subject.common.Analysis;
 import flock.subject.common.Graph.Node;
+import flock.subject.common.Analysis.Direction;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
@@ -51,12 +53,9 @@ import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
 import flock.subject.value.ConstProp;
 
-public class LiveVariablesFlowAnalysis {
-	public static void main(String[] args) throws IOException {
-		IStrategoTerm ast = new TAFTermReader(new TermFactory()).parseFromFile(args[0]);
-		Graph graph = Graph.createCfg(ast);
-		performDataAnalysis(graph);
-		System.out.println(graph.toGraphviz());
+public class LiveVariablesFlowAnalysis extends Analysis {
+	public LiveVariablesFlowAnalysis() {
+		super("live", Direction.BACKWARD);
 	}
 
 	public static void initNodeValue(Node node) {
@@ -90,40 +89,9 @@ public class LiveVariablesFlowAnalysis {
 		}
 	}
 
-	public static void performDataAnalysis(Graph g, Node root) {
-		HashSet<Node> nodeset = new HashSet<Node>();
-		nodeset.add(root);
-		performDataAnalysis(g, new HashSet<Node>(), nodeset);
-	}
-
-	public static void performDataAnalysis(Graph g, Collection<Node> nodeset) {
-		performDataAnalysis(g, new HashSet<Node>(), nodeset);
-	}
-
-	public static void performDataAnalysis(Graph g) {
-		performDataAnalysis(g, g.roots(), g.nodes());
-	}
-
-	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset) {
-		performDataAnalysis(g, roots, nodeset, new HashSet<Node>());
-	}
-
-	public static void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty) {
-		performDataAnalysis(g, new HashSet<Node>(), news, dirty);
-	}
-
-	public static void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty,
+	@Override
+	public void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset, Collection<Node> dirty,
 			float intervalBoundary) {
-		performDataAnalysis(g, new HashSet<Node>(), news, dirty, intervalBoundary);
-	}
-
-	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
-			Collection<Node> dirty) {
-		performDataAnalysis(g, roots, nodeset, dirty, -Float.MAX_VALUE);
-	}
-
-	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
-			Collection<Node> dirty, float intervalBoundary) {
 		Queue<Node> worklist = new LinkedBlockingQueue<>();
 		HashSet<Node> inWorklist = new HashSet<>();
 		for (Node node : nodeset) {

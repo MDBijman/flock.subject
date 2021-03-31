@@ -33,7 +33,9 @@ import org.spoofax.terms.StrategoInt;
 import org.spoofax.terms.StrategoString;
 import org.spoofax.terms.StrategoList;
 import flock.subject.common.Graph;
+import flock.subject.common.Analysis;
 import flock.subject.common.Graph.Node;
+import flock.subject.common.Analysis.Direction;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
 import flock.subject.common.Lattice;
@@ -48,12 +50,9 @@ import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
 import flock.subject.value.ConstProp;
 
-public class PointsToFlowAnalysis {
-	public static void main(String[] args) throws IOException {
-		IStrategoTerm ast = new TAFTermReader(new TermFactory()).parseFromFile(args[0]);
-		Graph graph = Graph.createCfg(ast);
-		performDataAnalysis(graph);
-		System.out.println(graph.toGraphviz());
+public class PointsToFlowAnalysis extends Analysis {
+	public PointsToFlowAnalysis() {
+		super("alias", "locations", Direction.FORWARD);
 	}
 
 	public static void initNodeValue(Node node) {
@@ -83,40 +82,40 @@ public class PointsToFlowAnalysis {
 		}
 	}
 
-	public static void performDataAnalysis(Graph g, Node root) {
+	public void performDataAnalysis(Graph g, Node root) {
 		HashSet<Node> nodeset = new HashSet<Node>();
 		nodeset.add(root);
 		performDataAnalysis(g, new HashSet<Node>(), nodeset);
 	}
 
-	public static void performDataAnalysis(Graph g, Collection<Node> nodeset) {
+	public void performDataAnalysis(Graph g, Collection<Node> nodeset) {
 		performDataAnalysis(g, new HashSet<Node>(), nodeset);
 	}
 
-	public static void performDataAnalysis(Graph g) {
+	public void performDataAnalysis(Graph g) {
 		performDataAnalysis(g, g.roots(), g.nodes());
 	}
 
-	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset) {
+	public void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset) {
 		performDataAnalysis(g, roots, nodeset, new HashSet<Node>());
 	}
 
-	public static void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty) {
+	public void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty) {
 		performDataAnalysis(g, new HashSet<Node>(), news, dirty);
 	}
 
-	public static void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty,
-			float intervalBoundary) {
+	@Override
+	public void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty, float intervalBoundary) {
 		performDataAnalysis(g, new HashSet<Node>(), news, dirty, intervalBoundary);
 	}
 
-	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
-			Collection<Node> dirty) {
+	public void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset, Collection<Node> dirty) {
 		performDataAnalysis(g, roots, nodeset, dirty, Long.MAX_VALUE);
 	}
 
-	public static void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
-			Collection<Node> dirty, float intervalBoundary) {
+	@Override
+	public void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset, Collection<Node> dirty,
+			float intervalBoundary) {
 		Queue<Node> worklist = new LinkedBlockingQueue<>();
 		HashSet<Node> inWorklist = new HashSet<>();
 		for (Node node : nodeset) {
@@ -176,7 +175,7 @@ public class PointsToFlowAnalysis {
 
 class LocationLattice extends Lattice {
 	IStrategoTerm value;
-	
+
 	LocationLattice(IStrategoTerm v) {
 		this.value = v;
 	}
@@ -189,8 +188,8 @@ class LocationLattice extends Lattice {
 	@Override
 	public Lattice lub(Lattice o) {
 		return new LocationLattice((IStrategoTerm) ((Supplier) () -> {
-			IStrategoTerm term0 = Helpers
-					.toTerm(new StrategoTuple(new IStrategoTerm[] { Helpers.toTerm(this.value()), Helpers.toTerm(o.value()) }, null));
+			IStrategoTerm term0 = Helpers.toTerm(new StrategoTuple(
+					new IStrategoTerm[] { Helpers.toTerm(this.value()), Helpers.toTerm(o.value()) }, null));
 			if (TermUtils.isTuple(term0)
 					&& (TermUtils.isAppl(Helpers.at(term0, 0)) && (M.appl(Helpers.at(term0, 0)).getName().equals("Top")
 							&& Helpers.at(term0, 0).getSubtermCount() == 0))) {
@@ -231,18 +230,18 @@ class LocationLattice extends Lattice {
 
 class LocationMapLattice extends Lattice {
 	MapLattice value;
-	
+
 	LocationMapLattice(MapLattice m) {
 		this.value = m;
 	}
-	
+
 	static public LocationMapLattice bottom() {
 		return new LocationMapLattice(MapLattice.bottom());
 	}
 
 	@Override
 	public Lattice lub(Lattice o) {
-		return this.value.lub((MapLattice)o.value());
+		return this.value.lub((MapLattice) o.value());
 	}
 
 	@Override
@@ -263,7 +262,7 @@ class TransferFunction0 extends TransferFunction {
 	public Lattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
-		return new LocationMapLattice(new MapLattice((Map)UserFunctions.locations_f(prev_t)));
+		return new LocationMapLattice(new MapLattice((Map) UserFunctions.locations_f(prev_t)));
 	}
 }
 
@@ -292,7 +291,7 @@ class TransferFunction1 extends TransferFunction {
 		}
 		LocationMapLattice l = new LocationMapLattice(new MapLattice(result_l));
 		LocationMapLattice r = new LocationMapLattice(new MapLattice(result_r));
-		return l.lub(r);		
+		return l.lub(r);
 	}
 }
 
@@ -311,8 +310,10 @@ class TransferFunction2 extends TransferFunction {
 			}
 		}
 		LocationMapLattice l = new LocationMapLattice(new MapLattice(result));
-		LocationMapLattice r = new LocationMapLattice(new MapLattice(MapUtils.create(n_t, new StrategoAppl(new StrategoConstructor("Loc", 1),
-				new IStrategoTerm[] { Helpers.toTerm(prev_t.getProperty("position").lattice.value()) }, null))));
+		LocationMapLattice r = new LocationMapLattice(new MapLattice(MapUtils.create(n_t,
+				new StrategoAppl(new StrategoConstructor("Loc", 1),
+						new IStrategoTerm[] { Helpers.toTerm(prev_t.getProperty("position").lattice.value()) },
+						null))));
 		return l.lub(r);
 	}
 }

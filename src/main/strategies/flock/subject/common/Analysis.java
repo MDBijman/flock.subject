@@ -1,170 +1,127 @@
 package flock.subject.common;
 
-import org.apache.commons.lang3.tuple.Pair;
-import org.strategoxt.lang.Context;
-import org.spoofax.interpreter.terms.IStrategoTerm;
-import org.spoofax.interpreter.terms.IStrategoAppl;
-import org.spoofax.interpreter.terms.IStrategoTuple;
-import org.spoofax.interpreter.terms.IStrategoList;
-import org.spoofax.interpreter.terms.IStrategoInt;
-import org.spoofax.terms.io.TAFTermReader;
-import org.spoofax.terms.TermFactory;
-import java.io.IOException;
-import org.spoofax.terms.util.M;
-import org.spoofax.terms.util.TermUtils;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Stack;
 import java.util.Map.Entry;
-import java.util.stream.Collectors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.Queue;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.Collection;
-import java.util.function.Supplier;
-import org.spoofax.terms.StrategoTuple;
-import org.spoofax.terms.StrategoAppl;
-import org.spoofax.terms.StrategoConstructor;
-import org.spoofax.terms.StrategoInt;
-import org.spoofax.terms.StrategoString;
-import org.spoofax.terms.StrategoList;
-import flock.subject.common.Graph;
+
+import org.spoofax.terms.util.TermUtils;
+import org.strategoxt.lang.Context;
+
 import flock.subject.common.Graph.Node;
-import flock.subject.common.CfgNodeId;
-import flock.subject.common.Helpers;
-import flock.subject.common.Lattice;
-import flock.subject.common.MapUtils;
-import flock.subject.common.SetUtils;
-import flock.subject.common.TransferFunction;
-import flock.subject.common.UniversalSet;
+import flock.subject.common.Lattice.LatticeWithDependencies;
 import flock.subject.live.Live;
-import flock.subject.live.LiveVariablesFlowAnalysis;
 import flock.subject.strategies.Program;
-import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
-import flock.subject.value.ConstProp;
 
-public class Analysis {
-	public HashSet<Node> dirty_live;
-	public HashSet<Node> new_live;
-	public boolean is_forward_live;
-	public boolean has_run_live = false;
-	public HashSet<Node> dirty_values;
-	public HashSet<Node> new_values;
-	public boolean is_forward_values;
-	public boolean has_run_values = false;
-	public HashSet<Node> dirty_alias;
-	public HashSet<Node> new_alias;
-	public boolean is_forward_alias;
-	public boolean has_run_alias = false;
-
-	public Analysis() {
-		dirty_live = new HashSet<Node>();
-		new_live = new HashSet<Node>();
-		is_forward_live = false;
-		dirty_values = new HashSet<Node>();
-		new_values = new HashSet<Node>();
-		is_forward_values = true;
-		dirty_alias = new HashSet<Node>();
-		new_alias = new HashSet<Node>();
-		is_forward_alias = true;
+public abstract class Analysis {
+	public enum Direction {
+		FORWARD, BACKWARD
 	}
 
-	public List<Set<Node>> getDirtySets() {
-		ArrayList<Set<Node>> dirtySets = new ArrayList<>();
-		dirtySets.add(this.dirty_live);
-		dirtySets.add(this.dirty_values);
-		dirtySets.add(this.dirty_alias);
-		return dirtySets;
+	public final String name;
+	public final String propertyName;
+	public final Direction direction;
+	public HashSet<Node> dirtyNodes = new HashSet<>();
+	public HashSet<Node> newNodes = new HashSet<>();
+	private boolean hasRunOnce = false;
+
+	public Analysis(String name, Direction dir) {
+		this.name = name;
+		this.propertyName = name;
+		this.direction = dir;
 	}
 
-	public List<Set<Node>> getNewSets() {
-		ArrayList<Set<Node>> newSets = new ArrayList<>();
-		newSets.add(this.new_live);
-		newSets.add(this.new_values);
-		newSets.add(this.new_alias);
-		return newSets;
+	public Analysis(String name, String propertyName, Direction dir) {
+		this.name = name;
+		this.propertyName = propertyName;
+		this.direction = dir;
 	}
 	
 	public void addToDirty(Node n) {
-		dirty_live.add(n);
-		dirty_values.add(n);
-		dirty_alias.add(n);
+		this.dirtyNodes.add(n);
 	}
 
 	public void addToNew(Node n) {
-		new_live.add(n);
-		new_values.add(n);
-		new_alias.add(n);
+		this.newNodes.add(n);
 	}
 
-	public void removeFromDirty(Set<Node> removedNodes) {
-		dirty_live.removeAll(removedNodes);
-		dirty_values.removeAll(removedNodes);
-		dirty_alias.removeAll(removedNodes);
-	}
-
-	public void removeFromNew(Set<Node> removedNodes) {
-		new_live.removeAll(removedNodes);
-		new_values.removeAll(removedNodes);
-		new_alias.removeAll(removedNodes);
-	}
-
-	public void updateUntilBoundary_live(Graph graph, Node node) {
-		float boundary = graph.intervalOf(node);
-		Set<Node> dirtyNodes = new HashSet<>(dirty_live);
-		for (Node n : dirty_live)
-			dirtyNodes.addAll(getTermDependencies(graph, n));
-		for (Node n : new_live)
-			dirtyNodes.addAll(getTermDependencies(graph, n));
-		if (!has_run_live) {
-			LiveVariablesFlowAnalysis.performDataAnalysis(graph, graph.roots(), new_live, dirtyNodes, boundary);
-			has_run_live = true;
-		} else {
-			LiveVariablesFlowAnalysis.updateDataAnalysis(graph, new_live, dirtyNodes, boundary);
+	public void remove(Graph g, Set<Node> nodes) {
+		this.dirtyNodes.removeAll(nodes);
+		this.newNodes.removeAll(nodes);
+		
+		for (Node node : nodes) {
+			this.dependents.remove(node);
 		}
-		dirty_live.removeIf(n -> graph.intervalOf(n) >= boundary);
-		new_live.removeIf(n -> graph.intervalOf(n) >= boundary);
-	}
 
-	public void updateUntilBoundary_values(Graph graph, Node node) {
-		float boundary = graph.intervalOf(node);
-		Set<Node> dirtyNodes = new HashSet<>(dirty_values);
-		for (Node n : dirty_values)
-			dirtyNodes.addAll(getTermDependencies(graph, n));
-		for (Node n : new_values)
-			dirtyNodes.addAll(getTermDependencies(graph, n));
-		if (!has_run_values) {
-			ValueFlowAnalysis.performDataAnalysis(graph, graph.roots(), new_values, dirtyNodes, boundary);
-			has_run_values = true;
-		} else {
-			ValueFlowAnalysis.updateDataAnalysis(graph, new_values, dirtyNodes, boundary);
+		for (Set<Dependency> s : this.dependents.values()) {
+			for (Node node : nodes) {
+				s.remove(new Dependency(node.getId()));
+			}
 		}
-		dirty_values.removeIf(n -> graph.intervalOf(n) <= boundary);
-		new_values.removeIf(n -> graph.intervalOf(n) <= boundary);
-	}
-
-	public void updateUntilBoundary_alias(Graph graph, Node node) {
-		float boundary = graph.intervalOf(node);
-		Set<Node> dirtyNodes = new HashSet<>(dirty_alias);
-		for (Node n : dirty_alias)
-			dirtyNodes.addAll(getTermDependencies(graph, n));
-		for (Node n : new_alias)
-			dirtyNodes.addAll(getTermDependencies(graph, n));
-		if (!has_run_alias) {
-			PointsToFlowAnalysis.performDataAnalysis(graph, graph.roots(), new_alias, dirtyNodes, boundary);
-			has_run_alias = true;
-		} else {
-			PointsToFlowAnalysis.updateDataAnalysis(graph, new_alias, dirtyNodes, boundary);
+		
+		for (Node n : g.nodes()) {
+			if (n.isGhost) {
+				continue;
+			}
+			
+			Property prop = n.getProperty(this.propertyName);
+			
+			if (prop == null) {
+				continue;
+			}
+			
 		}
-		dirty_alias.removeIf(n -> graph.intervalOf(n) <= boundary);
-		new_alias.removeIf(n -> graph.intervalOf(n) <= boundary);
 	}
 
+	public void clear() {
+		this.newNodes.clear();
+		this.dirtyNodes.clear();
+		this.dependents.clear();
+	}
+
+	/*
+	 * Analysis Logic
+	 */
+
+	public void updateUntilBoundary(Graph graph, Node node) {
+		float boundary = graph.intervalOf(node);
+		Set<Node> dirtyNodes = new HashSet<>(this.dirtyNodes);
+
+		for (Node n : this.dirtyNodes) {
+			dirtyNodes.addAll(getTermDependencies(graph, n));
+		}
+		for (Node n : this.newNodes) {
+			dirtyNodes.addAll(getTermDependencies(graph, n));
+		}
+
+		if (!this.hasRunOnce) {
+			this.performDataAnalysis(graph, graph.roots(), this.newNodes, dirtyNodes, boundary);
+			this.hasRunOnce = true;
+		} else {
+			this.updateDataAnalysis(graph, this.newNodes, dirtyNodes, boundary);
+		}
+
+		removeNodesUntilBoundary(graph, boundary);
+	}
+
+	private void removeNodesUntilBoundary(Graph graph, float boundary) {
+		if (this.direction == Direction.FORWARD) {
+			this.dirtyNodes.removeIf(n -> graph.intervalOf(n) <= boundary);
+			this.newNodes.removeIf(n -> graph.intervalOf(n) <= boundary);
+		} else if (this.direction == Direction.BACKWARD) {
+			this.dirtyNodes.removeIf(n -> graph.intervalOf(n) >= boundary);
+			this.newNodes.removeIf(n -> graph.intervalOf(n) >= boundary);
+		}
+	}
+
+	/*
+	 * Analysis specific methods
+	 */
+	
+	// FIXME autogenerate and specialise to analysis
+	// Add this as abstract method to generated analysis file and invoke
 	public static Set<Node> getTermDependencies(Graph g, Node n) {
 		Set<Node> r = new HashSet<>();
 		if (TermUtils.isAppl(g.termOf(n), "Int", 1)) {
@@ -178,23 +135,103 @@ public class Analysis {
 		return r;
 	}
 
-	public static boolean removeFact(Context context, Node current, CfgNodeId toRemove) {
-		boolean removedLiveness = false;
-		if (current.getProperty("live") != null) {
-			Set<Live> lv = (Set<Live>) current.getProperty("live").lattice.value();
-			removedLiveness = lv.removeIf(ll -> ll.origin.contains(toRemove));
+	// FIXME use dependents
+
+	// Maps node to all the nodes that depend on it
+	private HashMap<CfgNodeId, Set<Dependency>> dependents = new HashMap<>();
+	
+	public void initDependents(Graph g) {
+		for (Node n : g.nodes()) {
+			if (n.isGhost) {
+				continue;
+			}
+			
+			Property prop = n.getProperty(this.propertyName);
+			
+			if (prop == null) {
+				continue;
+			}
+			
+			LatticeWithDependencies l = (LatticeWithDependencies) prop.lattice;
+			
+			if (l == null) {
+				throw new RuntimeException("Lattice doesn't have dependency tracking: " + this.name);
+			}
+			
+			for (Dependency d : l.dependencies()) {
+				dependents.putIfAbsent(d.id, new HashSet<>());
+				dependents.get(d.id).add(new Dependency(n.getId()));
+			}
 		}
-		boolean removedConst = false;
-		if (current.getProperty("values") != null) {
-			HashMap cv = (HashMap) current.getProperty("values").lattice.value();
-			Set<Entry> e = cv.entrySet();
-			removedConst = e.removeIf(entry -> {
-				Lattice l = (Lattice) entry.getValue();
-				return l.origin().contains(toRemove);
-			});
-		}
-		if (current.getProperty("alias") != null) {
-		}
-		return removedLiveness || removedConst;
 	}
+	
+	public void removeFacts(Graph g, CfgNodeId origin) {
+		initDependents(g);
+		Set<Dependency> deps = dependents.get(origin);
+		if (deps == null) return;
+		
+		for (Dependency d : deps) {
+			Node n = g.getNode(d.id);
+			
+			if (n.isGhost) {
+				continue;
+			}
+			
+			Property prop = n.getProperty(this.propertyName);
+			
+			if (prop == null) {
+				continue;
+			}
+			
+			LatticeWithDependencies l = (LatticeWithDependencies) prop.lattice;
+			
+			if (l == null) {
+				throw new RuntimeException("Lattice doesn't have dependency tracking: " + this.name);
+			}
+			
+			l.removeByDependency(new Dependency(origin));
+			this.addToDirty(n);
+		}
+	}
+	
+	/*
+	 * Analysis implementation
+	 */
+	
+	public void performDataAnalysis(Graph g, Node root) {
+		HashSet<Node> nodeset = new HashSet<Node>();
+		nodeset.add(root);
+		performDataAnalysis(g, new HashSet<Node>(), nodeset);
+	}
+
+	public void performDataAnalysis(Graph g, Collection<Node> nodeset) {
+		performDataAnalysis(g, new HashSet<Node>(), nodeset);
+	}
+
+	public void performDataAnalysis(Graph g) {
+		performDataAnalysis(g, g.roots(), g.nodes());
+	}
+
+	public void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset) {
+		performDataAnalysis(g, roots, nodeset, new HashSet<Node>());
+	}
+
+	public void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty) {
+		performDataAnalysis(g, new HashSet<Node>(), news, dirty);
+	}
+
+	public void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset, Collection<Node> dirty) {
+		if (this.direction == Direction.BACKWARD) {
+			performDataAnalysis(g, roots, nodeset, dirty, -Float.MAX_VALUE);
+		} else if (this.direction == Direction.FORWARD) {
+			performDataAnalysis(g, roots, nodeset, dirty, Float.MAX_VALUE);
+		}
+	}
+	
+	public void updateDataAnalysis(Graph g, Collection<Node> news, Collection<Node> dirty, float intervalBoundary) {
+		performDataAnalysis(g, new HashSet<Node>(), news, dirty, intervalBoundary);
+	}
+	
+	public abstract void performDataAnalysis(Graph g, Collection<Node> roots, Collection<Node> nodeset,
+			Collection<Node> dirty, float intervalBoundary);
 }

@@ -1,8 +1,10 @@
 package flock.subject.strategies;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
@@ -15,10 +17,11 @@ import org.spoofax.interpreter.terms.ITermFactory;
 import org.strategoxt.lang.Context;
 
 import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.common.Analysis;
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Graph;
 import flock.subject.common.Graph.Node;
+import flock.subject.common.Analysis.Direction;
+import flock.subject.common.Analysis;
 import flock.subject.common.Lattice;
 import flock.subject.live.LiveVariablesFlowAnalysis;
 import flock.subject.value.ValueFlowAnalysis;
@@ -28,11 +31,63 @@ public class Program {
 
 	public IOAgent io;
 	public Graph graph;
-	public Analysis analysis;
+	public List<Analysis> analyses;
 
 	public Program() {
-		this.analysis = new Analysis();
+		this.analyses = new ArrayList<Analysis>();
+		this.analyses.add(new LiveVariablesFlowAnalysis());
+		this.analyses.add(new ValueFlowAnalysis());
+		this.analyses.add(new PointsToFlowAnalysis());
 	}
+
+	/*
+	 * Helpers for mutating graph analyses
+	 */
+
+	private void addToDirty(Node n) {
+		for (Analysis ga : analyses) {
+			ga.addToDirty(n);
+		}
+	}
+
+	private void addToNew(Node n) {
+		for (Analysis ga : analyses) {
+			ga.addToNew(n);
+		}
+	}
+
+	private void removeFromAnalysis(Set<Node> n) {
+		for (Analysis ga : analyses) {
+			ga.remove(graph, n);
+		}
+	}
+
+	private void clearAnalyses() {
+		for (Analysis ga : analyses) {
+			ga.clear();
+		}
+	}
+
+	public Analysis analysisWithName(String name) {
+		for (Analysis a : analyses) {
+			if (a.name.equals(name)) {
+				return a;
+			}
+		}
+		throw new RuntimeException("No analysis with name " + name);
+	}
+
+	private void removeAnalysisFacts(Set<Node> toRemove) {
+		for (Analysis a : analyses) {
+			for (Node id : toRemove) {
+				a.removeFacts(graph, id.getId());
+			}
+		}
+	}
+	
+	/*
+	 * 
+	 */
 	
 	public void createControlFlowGraph(Context context, IStrategoTerm current) {
 		this.io = context.getIOAgent();
@@ -47,13 +102,22 @@ public class Program {
 	public Node getNode(CfgNodeId id) {
 		return graph.getNode(id);
 	}
+	
+	private void applyGhostMask(Set<Node> mask) {
+		for (Node n : this.graph.nodes()) {
+			if (mask.contains(n)) {
+				n.isGhost = true;
+			}
+		}
+	}
 
 	public void replaceNode(Context context, IStrategoTerm current, IStrategoTerm replacement) {
 		Program.increment("replaceNode");
 		Program.beginTime("replaceNode");
 		Program.beginTime("replaceNode remove facts");
-		
-		// Nodes outside of the removed id's that have analysis results directly depending on them (static analysis)
+
+		// Nodes outside of the removed id's that have analysis results directly
+		// depending on them (static analysis)
 		Set<Node> dependents = new HashSet<>();
 
 		Node currentNode = Graph.getTermNode(current);
@@ -62,31 +126,18 @@ public class Program {
 		}
 
 		// Set of id's that were in the removed node
-		Set<Node> removedNodes = getAllNodes(current);	
-		removedNodes = removedNodes
-				.stream()
+		Set<Node> removedNodes = getAllNodes(current);
+		removedNodes = removedNodes.stream()
 				.filter(n -> this.graph.getNode(n.getId()) != null)
 				.collect(Collectors.toSet());
 
 		// Add removed id's to that set
-		for (Node n : removedNodes) {
-			dependents.add(n);
-		}
-
-		// Go through graph and remove facts with origin in removed id's
-		for (Node n : this.graph.nodes()) {
-			boolean changed = false;
-			for (Node d : dependents) {
-				boolean isRemoved = Analysis.removeFact(context, n, d.getId());
-				changed |= isRemoved;
-			}
-			if (changed) {
-				analysis.addToDirty(n);
-			}
-		}
+		dependents.addAll(removedNodes);
 		
-		analysis.removeFromDirty(removedNodes);
-		analysis.removeFromNew(removedNodes);
+		// Go through graph and remove facts with origin in removed id's
+		this.applyGhostMask(removedNodes);
+		this.removeAnalysisFacts(dependents);
+		this.removeFromAnalysis(removedNodes);
 
 		Program.endTime("replaceNode remove facts");
 
@@ -96,23 +147,24 @@ public class Program {
 		subGraph.removeGhostNodes();
 		subGraph.computeIntervals();
 		this.graph.replaceNodes(removedNodes, subGraph);
-		
+
 		for (Node n : subGraph.nodes()) {
-			this.analysis.addToNew(n);
+			this.addToNew(n);
 		}
-		
-		//this.allNodes.addAll(newNodes);
+
+		// this.allNodes.addAll(newNodes);
 		Program.endTime("replaceNode fix cfg");
 		Program.endTime("replaceNode");
 	}
 
 	public void removeNode(Context context, IStrategoTerm node) {
-		
+
 		Program.increment("removeNode");
 		Program.log("api", "removing node " + node.toString());
-		// Nodes outside of the removed id's that have analysis results directly depending on them (static analysis)
+		// Nodes outside of the removed id's that have analysis results directly
+		// depending on them (static analysis)
 		Set<Node> dependents = new HashSet<>();
-		
+
 		Node currentNode = Graph.getTermNode(node);
 		if (currentNode != null && this.graph.getNode(currentNode.getId()) != null) {
 			dependents.addAll(Analysis.getTermDependencies(this.graph, currentNode));
@@ -120,33 +172,18 @@ public class Program {
 
 		// Set of id's that were in the removed node
 		Set<Node> removedNodes = getAllNodes(node);
-		
-		analysis.removeFromDirty(removedNodes);
-		analysis.removeFromNew(removedNodes);
-		
+
+		this.removeFromAnalysis(removedNodes);
+
 		// Add removed id's to that set
-		for (Node n : removedNodes) {
-			dependents.add(n);
-		}
+		dependents.addAll(removedNodes);
 
 		// Go through graph and remove facts with origin in removed id's
-		for (Node n : this.graph.nodes()) {
-			if (removedNodes.contains(n)) {
-				n.isGhost = true;
-			} else {
-				boolean changed = false;
-				for (Node d : dependents) {
-					boolean isRemoved = Analysis.removeFact(context, n, d.getId());
-					changed |= isRemoved;
-				}
-				if (changed) {
-					analysis.addToDirty(n);
-				}
-			}
-		}
+		this.applyGhostMask(removedNodes);
+		this.removeAnalysisFacts(dependents);
 		this.graph.removeGhostNodes();
 	}
-	
+
 	private void initPosition(Graph g, ITermFactory factory) {
 		int i = 0;
 		for (Node n : g.nodes()) {
@@ -160,9 +197,9 @@ public class Program {
 	}
 
 	public void init(Context context, IStrategoTerm program) {
-		this.analysis = new Analysis();
+		this.clearAnalyses();
 		for (Node n : this.graph.nodes()) {
-			analysis.addToNew(n);
+			this.addToNew(n);
 		}
 		update(program);
 	}
@@ -179,14 +216,14 @@ public class Program {
 	private void setNodeTerms(IStrategoTerm term) {
 		Node id = Graph.getTermNode(term);
 		if (id != null && this.graph.getNode(id.getId()) != null) {
-			this.graph.getNode(id.getId()).term = term; 
+			this.graph.getNode(id.getId()).term = term;
 		}
-		
+
 		for (IStrategoTerm subterm : term.getSubterms()) {
 			setNodeTerms(subterm);
 		}
 	}
-	
+
 	private Set<Node> getAllNodes(IStrategoTerm program) {
 		HashSet<Node> set = new HashSet<>();
 		getAllNodes(set, program);
@@ -202,61 +239,65 @@ public class Program {
 			visited.add(id);
 		}
 	}
-	
+
+	/*
+	 * Timing and Debugging
+	 */
+
 	public static void printDebug(String t) {
 		instance.io.printError(t);
 	}
-	
-	private static String[] enabled = {
-		"time",
-		"count",
-		//"incremental",
-		//"validation",
-		//"api",
-		//"graphviz"
+
+	private static String[] enabled = { "time", "count",
+			// "incremental",
+			// "validation",
+			// "api",
+			// "graphviz"
 	};
 	private static HashSet<String> enabledTags = new HashSet<>(Arrays.asList(enabled));
-	
+
 	public static boolean isLogEnabled(String tag) {
 		return enabledTags.contains(tag);
 	}
-	
+
 	public static void log(String tag, String message) {
 		if (enabledTags.contains(tag)) {
 			printDebug("[" + tag + "]" + " " + message);
 		}
 	}
-	
+
 	private static HashMap<String, Long> runningMap = new HashMap<>();
 	private static HashMap<String, Long> cumulMap = new HashMap<>();
+
 	public static void beginTime(String tag) {
 		runningMap.put(tag, System.currentTimeMillis());
 		cumulMap.putIfAbsent(tag, 0L);
 	}
-	
+
 	public static void resetTimers() {
 		runningMap.clear();
 		cumulMap.clear();
 	}
-	
+
 	public static long endTime(String tag) {
 		long t = System.currentTimeMillis() - runningMap.get(tag);
 		runningMap.remove(tag);
 		cumulMap.put(tag, cumulMap.get(tag) + t);
 		return t;
 	}
-	
+
 	public static void logTime(String tag) {
 		Program.log("time", "time " + tag + ": " + cumulMap.get(tag));
 	}
-	
+
 	public static void logTimers() {
 		for (Entry<String, Long> e : cumulMap.entrySet()) {
 			Program.log("time", e.getKey() + ": " + e.getValue());
 		}
 	}
-	
+
 	private static HashMap<String, Long> countMap = new HashMap<>();
+
 	public static void increment(String tag) {
 		countMap.putIfAbsent(tag, 0L);
 		countMap.put(tag, countMap.get(tag) + 1);
@@ -270,9 +311,9 @@ public class Program {
 }
 
 class PositionLattice extends Lattice {
-	
+
 	IStrategoInt value;
-	
+
 	PositionLattice(IStrategoInt v) {
 		this.value = v;
 	}

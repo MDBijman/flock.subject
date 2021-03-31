@@ -41,7 +41,7 @@ public class get_alias_set_0_1 extends Strategy {
         	return null;
         }
         
-        Program.instance.analysis.updateUntilBoundary_alias(Program.instance.graph, node); 
+        Program.instance.analysisWithName("alias").updateUntilBoundary(Program.instance.graph,  node);
         
         if (node.properties.containsKey("locations")) {
         	Map<Object, Object> values = (Map<Object, Object>) node.getProperty("locations").lattice.value();

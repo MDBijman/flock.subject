@@ -30,7 +30,7 @@ public class get_value_0_1 extends Strategy {
         }
         
         Program.beginTime("value");
-        Program.instance.analysis.updateUntilBoundary_values(Program.instance.graph, node); 
+        Program.instance.analysisWithName("values").updateUntilBoundary(Program.instance.graph,  node);
         Program.endTime("value");
         //Program.log("graphviz", "after get_value update: " + Program.instance.graph.toGraphviz());
         

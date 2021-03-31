@@ -40,7 +40,7 @@ public class is_live_0_1 extends Strategy {
         	return current;
         }
         Program.beginTime("live");
-        Program.instance.analysis.updateUntilBoundary_live(Program.instance.graph, node);
+        Program.instance.analysisWithName("live").updateUntilBoundary(Program.instance.graph,  node);
         Program.endTime("live");
         //Program.log("graphviz", "after is_live update: " + Program.instance.graph.toGraphviz().replace('\n', '\t'));
         

@@ -49,6 +49,10 @@ public class Graph {
 		public Property getProperty(String name) {
 			return properties.get(name);
 		}
+		
+		public Collection<Property> properties() {
+			return properties.values();
+		}
 
 		@Override
 		public String toString() {
@@ -130,7 +134,43 @@ public class Graph {
 		this.parents.put(root, new HashSet<>());
 		this.nodeTerm.put(root, term);
 	}
+
+	/*
+	 * Getters
+	 */
 	
+	public Node getNode(CfgNodeId n) {
+		return this.nodes.get(n);
+	}
+
+	public Set<Node> childrenOf(Node n) {
+		return this.children.get(n);
+	}
+
+	public Set<Node> parentsOf(Node n) {
+		return this.parents.get(n);
+	}
+
+	public Collection<Node> nodes() {
+		return this.nodes.values();
+	}
+
+	public Collection<Node> roots() {
+		return this.roots;
+	}
+
+	public Collection<Node> leaves() {
+		return this.leaves;
+	}
+
+	public long size() {
+		return this.nodes.size();
+	}
+	
+	/*
+	 * Multi-graph Mutation
+	 */
+
 	private void mergeChildren(HashMap<Node, Set<Node>> other) {
 		for (Entry<Node, Set<Node>> e : other.entrySet()) {
 			if (this.children.containsKey(e.getKey())) {
@@ -207,50 +247,14 @@ public class Graph {
 			}
 		}
 	}
-	
-	public Node getNode(CfgNodeId n) {
-		return this.nodes.get(n);
-	}
 
 	/*
 	 * Graph Mutation
 	 */
-
-	private Node createOrGetNode(CfgNodeId id) {
-		if (!this.nodes.containsKey(id)) {
-			Node n = new Node(id);
-			this.nodes.put(id, n);
-			this.parents.put(n, new HashSet<>());
-			this.children.put(n, new HashSet<>());
-			return n;
-		} else {
-			return this.nodes.get(id);
-		}
-	}
-
+	
 	private void createEdge(Node parent, Node child) {
 		this.children.get(parent).add(child);
 		this.parents.get(child).add(parent);
-	}
-
-	public Set<Node> childrenOf(Node n) {
-		return this.children.get(n);
-	}
-
-	public Set<Node> parentsOf(Node n) {
-		return this.parents.get(n);
-	}
-
-	public Collection<Node> nodes() {
-		return this.nodes.values();
-	}
-
-	public Collection<Node> roots() {
-		return this.roots;
-	}
-
-	public Collection<Node> leaves() {
-		return this.leaves;
 	}
 
 	public void removeNode(Node n) {
@@ -348,10 +352,6 @@ public class Graph {
 		Program.endTime("replacenodev2");
 	}
 
-	public long size() {
-		return this.nodes.size();
-	}
-
 	public void removeGhostNodes() {
 		Program.beginTime("remove ghost");
 		Set<Node> ghostNodes = this.nodes().stream().filter(n -> n.isGhost).collect(Collectors.toSet());
@@ -375,15 +375,7 @@ public class Graph {
 	 * Intervals
 	 */
 
-	/*
-	 * Interval fields
-	 */
-
 	private HashMap<Node, Float> nodeInterval = new HashMap<>();
-
-	/*
-	 * Interval calculation and updating
-	 */
 
 	public Float intervalOf(Node n) {
 		return this.nodeInterval.get(n);
@@ -768,7 +760,6 @@ public class Graph {
 		}
 		return result_graph;
 	}
-
 	
 	public static Node getTermNode(IStrategoTerm n) {
 		if (n.getAnnotations().size() == 0)

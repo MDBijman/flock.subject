@@ -40,8 +40,10 @@ import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
 import flock.subject.common.UniversalSet;
+import flock.subject.common.Value.ValueWithDependencies;
 import flock.subject.live.Live;
 import flock.subject.live.LiveVariablesFlowAnalysis;
+import flock.subject.strategies.Program;
 import flock.subject.alias.PointsToFlowAnalysis;
 import flock.subject.value.ConstProp;
 
@@ -49,11 +51,7 @@ public abstract class Lattice {
 	public abstract Lattice lub(Lattice o);
 
 	public abstract Object value();
-
-	public Set<CfgNodeId> origin() {
-		return new UniversalSet();
-	}
-
+	
 	public boolean leq(Lattice r) {
 		return this.lub(r).equals(r);
 	}
@@ -74,7 +72,11 @@ public abstract class Lattice {
 	 * Default Implementations
 	 */
 	
-	public static class MustSet extends Lattice {
+	public static abstract class LatticeWithDependencies extends Lattice implements IHasDependencies {
+		public abstract boolean removeByDependency(Dependency d);
+	}
+	
+	public static class MustSet extends LatticeWithDependencies {
 		Set value;
 		
 		public MustSet(Set v) {
@@ -113,9 +115,67 @@ public abstract class Lattice {
 		public boolean geq(Lattice r) {
 			return SetUtils.isSubsetEquals(this.value(), r.value());
 		}
+		
+		/*
+		 * IHasDependency
+		 */
+
+		@Override
+		public Set<Dependency> dependencies() {
+			Set<Dependency> res = new HashSet<>();
+			for (Object val : this.value) {
+				IHasDependencies ival = (IHasDependencies) val;
+				res.addAll(ival.dependencies());
+			}
+			return res;
+		}
+
+		@Override
+		public void add(Dependency d) {
+			throw new NotImplementedException();
+		}
+
+		@Override
+		public boolean remove(Dependency d) {
+			boolean removed = false;
+			for (Object val : this.value) {
+				IHasDependencies ival = (IHasDependencies) val;
+				removed |= ival.remove(d);
+			}
+			return removed;
+		}
+
+		@Override
+		public boolean contains(Dependency d) {
+			for (Object val : this.value) {
+				IHasDependencies ival = (IHasDependencies) val;
+				if (ival.contains(d)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		
+		/*
+		 * LatticeWithDependencies
+		 */
+
+		@Override
+		public boolean removeByDependency(Dependency d) {
+			return this.value.removeIf(x -> {
+				if (x instanceof LatticeWithDependencies) {
+					((LatticeWithDependencies) x).removeByDependency(d);
+					return false;
+				} else if (x instanceof IHasDependencies) {
+					return ((IHasDependencies) x).contains(d);
+				}
+				
+				throw new RuntimeException("Expected lattice or value with dependencies");
+			});
+		}
 	}
 
-	public static class MaySet extends Lattice {
+	public static class MaySet extends LatticeWithDependencies {
 		Set value;
 		
 		public MaySet(MaySet v) {
@@ -164,9 +224,63 @@ public abstract class Lattice {
 		public boolean geq(Lattice r) {
 			return SetUtils.isSupersetEquals(this.value(), r.value());
 		}
+		
+		/*
+		 * LatticeWithDependencies
+		 */
+
+		@Override
+		public Set<Dependency> dependencies() {
+			Set<Dependency> res = new HashSet<>();
+			for (Object val : this.value) {
+				IHasDependencies ival = (IHasDependencies) val;
+				res.addAll(ival.dependencies());
+			}
+			return res;
+		}
+
+		@Override
+		public void add(Dependency d) {
+			throw new NotImplementedException();
+		}
+
+		@Override
+		public boolean remove(Dependency d) {
+			boolean removed = false;
+			for (Object val : this.value) {
+				IHasDependencies ival = (IHasDependencies) val;
+				removed |= ival.remove(d);
+			}
+			return removed;
+		}
+
+		@Override
+		public boolean contains(Dependency d) {
+			for (Object val : this.value) {
+				IHasDependencies ival = (IHasDependencies) val;
+				if (ival.contains(d)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		@Override
+		public boolean removeByDependency(Dependency d) {
+			return this.value.removeIf(x -> {
+				if (x instanceof LatticeWithDependencies) {
+					((LatticeWithDependencies) x).removeByDependency(d);
+					return false;
+				} else if (x instanceof IHasDependencies) {
+					return ((IHasDependencies) x).contains(d);
+				}
+				
+				throw new RuntimeException("Expected lattice or value with dependencies");
+			});
+		}
 	}
 
-	public static class MapLattice extends Lattice implements Iterable<Map.Entry> {
+	public static class MapLattice extends LatticeWithDependencies implements Iterable<Map.Entry> {
 		Map value;
 
 		public MapLattice(Lattice o) {
@@ -201,6 +315,64 @@ public abstract class Lattice {
 		@Override
 		public Object value() {
 			return this.value;
+		}
+		
+		/*
+		 * IHasDependency
+		 */
+
+		@Override
+		public Set<Dependency> dependencies() {
+			Set<Dependency> res = new HashSet<>();
+			for (Object val : this.value.values()) {
+				IHasDependencies ival = (IHasDependencies) val;
+				res.addAll(ival.dependencies());
+			}
+			return res;
+		}
+
+		@Override
+		public void add(Dependency d) {
+			throw new NotImplementedException();
+		}
+
+		@Override
+		public boolean remove(Dependency d) {
+			boolean removed = false;
+			for (Object val : this.value.values()) {
+				IHasDependencies ival = (IHasDependencies) val;
+				removed |= ival.remove(d);
+			}
+			return removed;
+		}
+
+		@Override
+		public boolean contains(Dependency d) {
+			for (Object val : this.value.values()) {
+				IHasDependencies ival = (IHasDependencies) val;
+				if (ival.contains(d)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		
+		/*
+		 * LatticeWithDependencies
+		 */
+		
+		@Override
+		public boolean removeByDependency(Dependency d) {
+			return this.value.values().removeIf(x -> {
+				if (x instanceof LatticeWithDependencies) {
+					((LatticeWithDependencies) x).removeByDependency(d);
+					return false;
+				} else if (x instanceof IHasDependencies) {
+					return ((IHasDependencies) x).contains(d);
+				}
+				
+				throw new RuntimeException("Expected lattice or value with dependencies");
+			});
 		}
 	}
 }
