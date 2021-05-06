@@ -6,11 +6,9 @@ dependencies:
   - org.metaborg:org.metaborg.meta.lang.esv:${metaborgVersion}
   - org.metaborg:org.metaborg.meta.lang.template:${metaborgVersion}
   - org.matthijs:asmx86:0.1.0-SNAPSHOT
-  - org.metaborg:org.metaborg.lang.tiger:0.1.0-SNAPSHOT
   source:
   - org.metaborg:meta.lib.spoofax:${metaborgVersion}
   - org.matthijs:asmx86:0.1.0-SNAPSHOT
-  - org.metaborg:org.metaborg.lang.tiger:0.1.0-SNAPSHOT
 pardonedLanguages:
 - EditorService
 - Stratego-Sugar
