@@ -4,16 +4,11 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.Map.Entry;
 
 import org.spoofax.terms.util.TermUtils;
-import org.strategoxt.lang.Context;
 
+import flock.subject.common.FlockLattice.FlockCollectionLattice;
 import flock.subject.common.Graph.Node;
-import flock.subject.common.Lattice.LatticeWithDependencies;
-import flock.subject.live.Live;
-import flock.subject.strategies.Program;
-import flock.subject.value.ValueFlowAnalysis;
 
 public abstract class Analysis {
 	public enum Direction {
@@ -25,6 +20,7 @@ public abstract class Analysis {
 	public final Direction direction;
 	public HashSet<Node> dirtyNodes = new HashSet<>();
 	public HashSet<Node> newNodes = new HashSet<>();
+	public HashSet<Node> changedNodes = new HashSet<>();
 	private boolean hasRunOnce = false;
 
 	public Analysis(String name, Direction dir) {
@@ -52,7 +48,7 @@ public abstract class Analysis {
 		this.newNodes.removeAll(nodes);
 		
 		for (Node node : nodes) {
-			this.dependents.remove(node);
+			this.dependents.remove(node.getId());
 		}
 
 		for (Set<Dependency> s : this.dependents.values()) {
@@ -120,8 +116,7 @@ public abstract class Analysis {
 	 * Analysis specific methods
 	 */
 	
-	// FIXME autogenerate and specialise to analysis
-	// Add this as abstract method to generated analysis file and invoke
+	// TODO Add this as abstract method to generated analysis file and invoke
 	public static Set<Node> getTermDependencies(Graph g, Node n) {
 		Set<Node> r = new HashSet<>();
 		if (TermUtils.isAppl(g.termOf(n), "Int", 1)) {
@@ -135,13 +130,12 @@ public abstract class Analysis {
 		return r;
 	}
 
-	// FIXME use dependents
-
 	// Maps node to all the nodes that depend on it
 	private HashMap<CfgNodeId, Set<Dependency>> dependents = new HashMap<>();
 	
-	public void initDependents(Graph g) {
-		for (Node n : g.nodes()) {
+	public void updateDependents(Set<Node> nodes) {
+		Program.beginTime("Analysis@updateDependents");
+		for (Node n : nodes) {
 			if (n.isGhost) {
 				continue;
 			}
@@ -152,23 +146,28 @@ public abstract class Analysis {
 				continue;
 			}
 			
-			LatticeWithDependencies l = (LatticeWithDependencies) prop.lattice;
+			FlockLattice l = prop.lattice;
 			
 			if (l == null) {
 				throw new RuntimeException("Lattice doesn't have dependency tracking: " + this.name);
 			}
-			
-			for (Dependency d : l.dependencies()) {
+			for (Dependency d : LatticeDependencyUtils.gatherDependencies(l)) {
 				dependents.putIfAbsent(d.id, new HashSet<>());
 				dependents.get(d.id).add(new Dependency(n.getId()));
 			}
 		}
+		Program.endTime("Analysis@updateDependents");
 	}
 	
 	public void removeFacts(Graph g, CfgNodeId origin) {
-		initDependents(g);
+		Program.beginTime("Analysis@removeFacts");
+		
+		updateDependents(this.changedNodes);
+		this.changedNodes.clear();
+		
 		Set<Dependency> deps = dependents.get(origin);
 		if (deps == null) return;
+
 		
 		for (Dependency d : deps) {
 			Node n = g.getNode(d.id);
@@ -183,17 +182,20 @@ public abstract class Analysis {
 				continue;
 			}
 			
-			LatticeWithDependencies l = (LatticeWithDependencies) prop.lattice;
+			FlockCollectionLattice l = (FlockCollectionLattice) prop.lattice;
 			
 			if (l == null) {
 				throw new RuntimeException("Lattice doesn't have dependency tracking: " + this.name);
 			}
 			
-			l.removeByDependency(new Dependency(origin));
+			LatticeDependencyUtils.removeValuesByDependency(l, new Dependency(origin));
 			this.addToDirty(n);
 		}
+		
+		Program.endTime("Analysis@removeFacts");
 	}
 	
+
 	/*
 	 * Analysis implementation
 	 */

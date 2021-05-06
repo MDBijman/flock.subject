@@ -1,4 +1,4 @@
-package flock.subject.strategies.analysis;
+package flock.subject.impl.alias;
 
 import org.spoofax.interpreter.terms.IStrategoInt;
 import org.spoofax.interpreter.terms.IStrategoTerm;
@@ -18,9 +18,9 @@ import org.strategoxt.lang.Context;
 import org.strategoxt.lang.Strategy;
 
 import flock.subject.common.CfgNodeId;
+import flock.subject.common.Program;
 import flock.subject.common.SetUtils;
 import flock.subject.common.Graph.Node;
-import flock.subject.strategies.Program;
 
 import org.spoofax.terms.ParseError;
 import org.spoofax.terms.Term;

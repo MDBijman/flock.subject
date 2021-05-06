@@ -1,9 +1,5 @@
 package flock.subject.common;
 
-import java.util.Set;
-
-import org.spoofax.interpreter.terms.IStrategoTerm;
-
 public class Dependency {
 	public CfgNodeId id;
 

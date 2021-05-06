@@ -1,4 +1,4 @@
-package flock.subject.live;
+package flock.subject.impl.live;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -7,11 +7,9 @@ import org.spoofax.interpreter.terms.IStrategoTerm;
 
 import flock.subject.common.CfgNodeId;
 import flock.subject.common.Dependency;
-import flock.subject.common.IHasDependencies;
-import flock.subject.common.Value;
-import flock.subject.common.Value.ValueWithDependencies;
+import flock.subject.common.FlockValue.FlockValueWithDependencies;
 
-public class Live extends ValueWithDependencies {
+public class Live extends FlockValueWithDependencies {
 	public IStrategoTerm value;
 	public Set<Dependency> dependencies;
 
@@ -58,27 +56,28 @@ public class Live extends ValueWithDependencies {
 		return value.hashCode();
 	}
 	
-	/*
-	 * IHasDependencies
-	 */
-
 	@Override
 	public Set<Dependency> dependencies() {
 		return this.dependencies;
 	}
 
 	@Override
-	public void add(Dependency d) {
+	public boolean hasDependency(Dependency d) {
+		return this.dependencies.contains(d);		
+	}
+
+	@Override
+	public void addDependency(Dependency d) {
 		this.dependencies.add(d);
 	}
 
 	@Override
-	public boolean remove(Dependency d) {
+	public boolean removeDependency(Dependency d) {
 		return this.dependencies.remove(d);		
 	}
-	
+
 	@Override
-	public boolean contains(Dependency d) {
-		return this.dependencies.contains(d);		
+	public IStrategoTerm toTerm() {
+		return value;
 	}
 }

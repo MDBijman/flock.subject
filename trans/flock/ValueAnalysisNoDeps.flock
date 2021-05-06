@@ -10,7 +10,7 @@ property rules
   where
     prevmap : Map[name, Value] = { k |-> v | (k |-> v) <- values(prev) as Map[name, Value], k != n }
     previous: Environment = prevmap as Environment
-    newmap  : Map[name, Value] = {n: name |-> Const(i): ConstProp{position(t)} as Value} as Map[name, Value]
+    newmap  : Map[name, Value] = {n: name |-> Const(i): ConstProp as Value} as Map[name, Value]
     new     : Environment = newmap as Environment
     result  : Environment = previous \[Environment]/ new
 
@@ -18,29 +18,29 @@ property rules
   where
     prevmap : Map[name, Value] = { k |-> v | (k |-> v) <- values(prev) as Map[name, Value], k != n }
     previous: Environment = prevmap as Environment
-    newmap  : Map[name, Value] = {n: name |-> Top(): ConstProp{position(t)} as Value} as Map[name, Value]
+    newmap  : Map[name, Value] = {n: name |-> Top(): ConstProp as Value} as Map[name, Value]
     new     : Environment = newmap as Environment
     result  : Environment = previous \[Environment]/ new
     
   values(prev -> _) = values(prev)
 
 types
-  ConstProp with dependencies =
+  ConstProp =
   | Top()
   | Const(int)
   | Bottom()
   
 lattices
-  Value is value with dependencies where
+  Value is value where
     type = ConstProp
     bottom = Bottom(): ConstProp as Value
     top = Top(): ConstProp as Value
     lub(l: Value, r: Value) = match (l, r) with
-      | (Top(), _) => Top(): ConstProp{l, r} as Value
-      | (_, Top()) => Top(): ConstProp{l, r} as Value
-      | (Const(i), Const(j)) => if i == j then (Const(i): ConstProp{l, r} as Value) else (Top(): ConstProp{l, r} as Value)
-      | (_, Bottom()) => l: ConstProp{l, r} as Value
-      | (Bottom(), _) => r: ConstProp{l, r} as Value
+      | (Top(), _) => Top(): ConstProp as Value
+      | (_, Top()) => Top(): ConstProp as Value
+      | (Const(i), Const(j)) => if i == j then (Const(i): ConstProp as Value) else (Top(): ConstProp as Value)
+      | (_, Bottom()) => l: ConstProp as Value
+      | (Bottom(), _) => r: ConstProp as Value
       
   Environment is collection where
     type = Map[name, Value]

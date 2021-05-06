@@ -1,57 +1,23 @@
-package flock.subject.live;
+package flock.subject.impl.live;
 
-import org.apache.commons.lang3.tuple.Pair;
-import org.strategoxt.lang.Context;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.LinkedBlockingQueue;
+
 import org.spoofax.interpreter.terms.IStrategoTerm;
-import org.spoofax.interpreter.terms.IStrategoAppl;
-import org.spoofax.interpreter.terms.IStrategoTuple;
-import org.spoofax.interpreter.terms.IStrategoList;
-import org.spoofax.interpreter.terms.IStrategoString;
-import org.spoofax.interpreter.terms.IStrategoInt;
-import org.spoofax.terms.io.TAFTermReader;
-import org.spoofax.terms.TermFactory;
-import java.io.IOException;
 import org.spoofax.terms.util.M;
 import org.spoofax.terms.util.TermUtils;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Stack;
-import java.util.Map.Entry;
-import java.util.stream.Collectors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.Queue;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.Collection;
-import java.util.function.Supplier;
-import org.spoofax.terms.StrategoTuple;
-import org.spoofax.terms.StrategoAppl;
-import org.spoofax.terms.StrategoConstructor;
-import org.spoofax.terms.StrategoInt;
-import org.spoofax.terms.StrategoString;
-import org.spoofax.terms.StrategoList;
-import flock.subject.common.Graph;
+
 import flock.subject.common.Analysis;
+import flock.subject.common.FlockLattice;
+import flock.subject.common.FlockLattice.MaySet;
+import flock.subject.common.Graph;
 import flock.subject.common.Graph.Node;
-import flock.subject.common.Analysis.Direction;
-import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
-import flock.subject.common.Lattice;
-import flock.subject.common.Lattice.MaySet;
-import flock.subject.common.Lattice.MustSet;
-import flock.subject.common.Lattice.MapLattice;
-import flock.subject.common.MapUtils;
 import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
-import flock.subject.common.UniversalSet;
-import flock.subject.live.Live;
-import flock.subject.live.LiveVariablesFlowAnalysis;
-import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.value.ValueFlowAnalysis;
-import flock.subject.value.ConstProp;
 
 public class LiveVariablesFlowAnalysis extends Analysis {
 	public LiveVariablesFlowAnalysis() {
@@ -113,17 +79,19 @@ public class LiveVariablesFlowAnalysis extends Analysis {
 			if (root.interval < intervalBoundary)
 				continue;
 			root.getProperty("live").lattice = root.getProperty("live").init.eval(root);
+			this.changedNodes.add(root);
 		}
 		for (Node node : nodeset) {
 			if (node.interval < intervalBoundary)
 				continue;
 			{
-				Lattice init = node.getProperty("live").lattice;
+				FlockLattice init = node.getProperty("live").lattice;
 				for (Node pred : g.childrenOf(node)) {
-					Lattice live_o = pred.getProperty("live").transfer.eval(pred);
+					FlockLattice live_o = pred.getProperty("live").transfer.eval(pred);
 					init = init.lub(live_o);
 				}
 				node.getProperty("live").lattice = init;
+				this.changedNodes.add(node);
 			}
 		}
 		while (!worklist.isEmpty()) {
@@ -131,7 +99,7 @@ public class LiveVariablesFlowAnalysis extends Analysis {
 			inWorklist.remove(node);
 			if (node.interval < intervalBoundary)
 				continue;
-			Lattice live_n = node.getProperty("live").transfer.eval(node);
+			FlockLattice live_n = node.getProperty("live").transfer.eval(node);
 			for (Node successor : g.childrenOf(node)) {
 				if (successor.interval < intervalBoundary)
 					continue;
@@ -140,12 +108,15 @@ public class LiveVariablesFlowAnalysis extends Analysis {
 					worklist.add(successor);
 					inWorklist.add(successor);
 				}
+				if (changed) {
+					this.changedNodes.add(successor);
+				}
 			}
 			for (Node successor : g.parentsOf(node)) {
 				boolean changed = false;
 				if (successor.interval < intervalBoundary)
 					continue;
-				Lattice live_o = successor.getProperty("live").lattice;
+				FlockLattice live_o = successor.getProperty("live").lattice;
 				if (live_n.nleq(live_o)) {
 					successor.getProperty("live").lattice = live_o.lub(live_n);
 					changed = true;
@@ -153,6 +124,9 @@ public class LiveVariablesFlowAnalysis extends Analysis {
 				if (changed && !inWorklist.contains(successor)) {
 					worklist.add(successor);
 					inWorklist.add(successor);
+				}
+				if (changed) {
+					this.changedNodes.add(successor);
 				}
 			}
 		}
@@ -170,7 +144,7 @@ class TransferFunctions {
 
 class TransferFunction0 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node next_t = node;
 		return UserFunctions.live_f(next_t);
@@ -179,7 +153,7 @@ class TransferFunction0 extends TransferFunction {
 
 class TransferFunction1 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node next_t = node;
 		IStrategoTerm n_t = Helpers.at(term, 0);
@@ -197,7 +171,7 @@ class TransferFunction1 extends TransferFunction {
 
 class TransferFunction2 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node next_t = node;
 		IStrategoTerm t_t = term;
@@ -211,7 +185,7 @@ class TransferFunction2 extends TransferFunction {
 
 class TransferFunction3 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node next_t = node;
 		IStrategoTerm t_t = term;
@@ -225,7 +199,7 @@ class TransferFunction3 extends TransferFunction {
 
 class TransferFunction4 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node next_t = node;
 		IStrategoTerm t_t = term;
@@ -239,14 +213,14 @@ class TransferFunction4 extends TransferFunction {
 
 class TransferFunction5 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		return new MaySet(SetUtils.create());
 	}
 }
 
 class UserFunctions {
-	public static Lattice live_f(Object o) {
+	public static FlockLattice live_f(Object o) {
 		Node node = (Node) o;
 		return node.getProperty("live").lattice;
 	}

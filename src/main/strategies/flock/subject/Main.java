@@ -1,4 +1,4 @@
-package flock.subject.strategies;
+package flock.subject;
 
 import org.strategoxt.lang.Context;
 

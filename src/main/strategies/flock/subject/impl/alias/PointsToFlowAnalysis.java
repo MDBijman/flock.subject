@@ -1,54 +1,28 @@
-package flock.subject.alias;
+package flock.subject.impl.alias;
 
-import org.apache.commons.lang3.tuple.Pair;
-import org.strategoxt.lang.Context;
-import org.spoofax.interpreter.terms.IStrategoTerm;
-import org.spoofax.interpreter.terms.IStrategoAppl;
-import org.spoofax.interpreter.terms.IStrategoTuple;
-import org.spoofax.interpreter.terms.IStrategoList;
-import org.spoofax.interpreter.terms.IStrategoInt;
-import org.spoofax.terms.io.TAFTermReader;
-import org.spoofax.terms.TermFactory;
-import java.io.IOException;
-import org.spoofax.terms.util.M;
-import org.spoofax.terms.util.TermUtils;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Stack;
-import java.util.Map.Entry;
-import java.util.stream.Collectors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.Queue;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Supplier;
-import org.spoofax.terms.StrategoTuple;
+
+import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.terms.StrategoAppl;
 import org.spoofax.terms.StrategoConstructor;
-import org.spoofax.terms.StrategoInt;
-import org.spoofax.terms.StrategoString;
-import org.spoofax.terms.StrategoList;
-import flock.subject.common.Graph;
+import org.spoofax.terms.StrategoTuple;
+import org.spoofax.terms.util.M;
+import org.spoofax.terms.util.TermUtils;
+
 import flock.subject.common.Analysis;
+import flock.subject.common.FlockLattice;
+import flock.subject.common.FlockLattice.MapLattice;
+import flock.subject.common.Graph;
 import flock.subject.common.Graph.Node;
-import flock.subject.common.Analysis.Direction;
-import flock.subject.common.CfgNodeId;
 import flock.subject.common.Helpers;
-import flock.subject.common.Lattice;
-import flock.subject.common.Lattice.MapLattice;
 import flock.subject.common.MapUtils;
-import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
-import flock.subject.common.UniversalSet;
-import flock.subject.live.Live;
-import flock.subject.live.LiveVariablesFlowAnalysis;
-import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.value.ValueFlowAnalysis;
-import flock.subject.value.ConstProp;
 
 public class PointsToFlowAnalysis extends Analysis {
 	public PointsToFlowAnalysis() {
@@ -145,12 +119,12 @@ public class PointsToFlowAnalysis extends Analysis {
 			inWorklist.remove(node);
 			if (node.interval > intervalBoundary)
 				continue;
-			Lattice locations_n = node.getProperty("locations").transfer.eval(node);
+			FlockLattice locations_n = node.getProperty("locations").transfer.eval(node);
 			for (Node successor : g.childrenOf(node)) {
 				if (successor.interval > intervalBoundary)
 					continue;
 				boolean changed = false;
-				Lattice locations_o = successor.getProperty("locations").lattice;
+				FlockLattice locations_o = successor.getProperty("locations").lattice;
 				if (locations_n.nleq(locations_o)) {
 					successor.getProperty("locations").lattice = locations_o.lub(locations_n);
 					changed = true;
@@ -173,7 +147,7 @@ public class PointsToFlowAnalysis extends Analysis {
 	}
 }
 
-class LocationLattice extends Lattice {
+class LocationLattice implements FlockLattice {
 	IStrategoTerm value;
 
 	LocationLattice(IStrategoTerm v) {
@@ -186,7 +160,7 @@ class LocationLattice extends Lattice {
 	}
 
 	@Override
-	public Lattice lub(Lattice o) {
+	public FlockLattice lub(FlockLattice o) {
 		return new LocationLattice((IStrategoTerm) ((Supplier) () -> {
 			IStrategoTerm term0 = Helpers.toTerm(new StrategoTuple(
 					new IStrategoTerm[] { Helpers.toTerm(this.value()), Helpers.toTerm(o.value()) }, null));
@@ -228,7 +202,7 @@ class LocationLattice extends Lattice {
 
 }
 
-class LocationMapLattice extends Lattice {
+class LocationMapLattice implements FlockLattice {
 	MapLattice value;
 
 	LocationMapLattice(MapLattice m) {
@@ -240,7 +214,7 @@ class LocationMapLattice extends Lattice {
 	}
 
 	@Override
-	public Lattice lub(Lattice o) {
+	public FlockLattice lub(FlockLattice o) {
 		return this.value.lub((MapLattice) o.value());
 	}
 
@@ -259,7 +233,7 @@ class TransferFunctions {
 
 class TransferFunction0 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
 		return new LocationMapLattice(new MapLattice((Map) UserFunctions.locations_f(prev_t)));
@@ -268,7 +242,7 @@ class TransferFunction0 extends TransferFunction {
 
 class TransferFunction1 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
 		IStrategoTerm n_t = Helpers.at(term, 0);
@@ -297,7 +271,7 @@ class TransferFunction1 extends TransferFunction {
 
 class TransferFunction2 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
 		IStrategoTerm n_t = Helpers.at(term, 0);
@@ -320,7 +294,7 @@ class TransferFunction2 extends TransferFunction {
 
 class TransferFunction3 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		return new LocationMapLattice(new MapLattice(MapUtils.create()));
 	}

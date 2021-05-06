@@ -19,7 +19,7 @@ def gen_many_loops():
 
     f.write("fn main() {\n")
 
-    n = 300
+    n = 30
     f.write("\ta0 := 1;\n")
     for i in range(1, n):
         f.write(f"\ta{i} := 0;\n")

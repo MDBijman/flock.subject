@@ -16,16 +16,20 @@ strategies
 strategies 
 
   optimize-program: p -> p'
-  where (p', t) := <profile(optimize-program'; flock-debug-graph)> p ; <debug> t
+  where p' := <optimize-program'; flock-debug-graph> p
 
   optimize-program': p -> p''
-    with
-     p' := <flock-add-id> p
-    ; <flock-analyse-program> p'
-    ; <flock-debug-graph> ()
-    ; pf  := <forward-pass>  p'
-    ; pb  := <backward-pass> pf
-    ; p'' := <cleanup-pass>  pb
+  with
+    p' := <flock-add-id> p
+  ; <flock-analyse-program> p'
+  ; <flock-debug-graph> ()
+  ; <debug> <run-time>
+  ; pf  := <forward-pass>  p'
+  ; <debug> <run-time>
+  ; pb  := <backward-pass> pf
+  ; <debug> <run-time>
+  ; p'' := <cleanup-pass>  pb
+  ; <debug> <run-time>
 
   forward-pass = fixpoint-opt(forward-pass-single | 3000)
   forward-pass-single: p -> p'
@@ -37,29 +41,34 @@ strategies
   where 
     p'  := <forward-optimizations> p 
   ; p'' := <flock-replace-node(|p)> p'
-    
+ 
+  forward-optimizations  = fold-expressions + propagate-constant-read + replace-dead-if
+ 
   backward-pass = fixpoint-opt(backward-pass-single | 3000)
   backward-pass-single: p -> p'
   where
     p' := <oncetd(opt-backward)> p
   ; <flock-update> p'
+  
   opt-backward: p -> p''
   where 
     p'  := <backward-optimizations> p 
   ; p'' := <flock-replace-node(|p)> p'
+  
+  backward-optimizations = remove-dead-store + remove-dead-heap-store
+  
   
   cleanup-pass = fixpoint-opt(cleanup-pass-single | 1000)
   cleanup-pass-single: p -> p'
   where 
     p' := <oncetd(opt-cleanup)> p
   ; <flock-update> p' 
+  
   opt-cleanup: p -> p'
   where 
     (p', dead-nodes) := <cleanup-optimizations> p
   ; <map(flock-remove-node)> dead-nodes
   
-  forward-optimizations  = fold-expressions + propagate-constant-read + replace-dead-if
-  backward-optimizations = remove-dead-store + remove-dead-heap-store
   cleanup-optimizations  = remove-skips + remove-empty-blocks
   
 strategies

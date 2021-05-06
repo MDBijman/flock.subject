@@ -1,59 +1,34 @@
-package flock.subject.value;
+package flock.subject.impl.value;
 
-import org.apache.commons.lang3.tuple.Pair;
-import org.strategoxt.lang.Context;
-import org.spoofax.interpreter.terms.IStrategoTerm;
-import org.spoofax.interpreter.terms.IStrategoAppl;
-import org.spoofax.interpreter.terms.IStrategoTuple;
-import org.spoofax.interpreter.terms.IStrategoList;
-import org.spoofax.interpreter.terms.IStrategoString;
-import org.spoofax.interpreter.terms.IStrategoInt;
-import org.spoofax.terms.io.TAFTermReader;
-import org.spoofax.terms.TermFactory;
-import java.io.IOException;
-import org.spoofax.terms.util.M;
-import org.spoofax.terms.util.TermUtils;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Stack;
-import java.util.Map.Entry;
-import java.util.stream.Collectors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.Queue;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.Collection;
-import java.util.function.Supplier;
-import org.spoofax.terms.StrategoTuple;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Queue;
+import java.util.concurrent.LinkedBlockingQueue;
+
+import org.spoofax.interpreter.terms.IStrategoString;
+import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.terms.StrategoAppl;
 import org.spoofax.terms.StrategoConstructor;
-import org.spoofax.terms.StrategoInt;
-import org.spoofax.terms.StrategoString;
-import org.spoofax.terms.StrategoList;
-import flock.subject.common.Graph;
+import org.spoofax.terms.StrategoTuple;
+import org.spoofax.terms.util.M;
+import org.spoofax.terms.util.TermUtils;
+
 import flock.subject.common.Analysis;
+import flock.subject.common.FlockLattice;
+import flock.subject.common.FlockLattice.FlockCollectionLattice;
+import flock.subject.common.FlockLattice.FlockValueLattice;
+import flock.subject.common.FlockLattice.MapLattice;
+import flock.subject.common.FlockValue;
+import flock.subject.common.FlockValue.FlockValueWithDependencies;
+import flock.subject.common.Graph;
 import flock.subject.common.Graph.Node;
-import flock.subject.common.Analysis.Direction;
-import flock.subject.common.CfgNodeId;
-import flock.subject.common.Dependency;
+import flock.subject.impl.value.ValueFlowAnalysisProperties.ConstProp;
 import flock.subject.common.Helpers;
-import flock.subject.common.IHasDependencies;
-import flock.subject.common.Lattice;
-import flock.subject.common.Lattice.MaySet;
-import flock.subject.common.Lattice.MustSet;
-import flock.subject.common.Lattice.MapLattice;
 import flock.subject.common.MapUtils;
-import flock.subject.common.SetUtils;
 import flock.subject.common.TransferFunction;
-import flock.subject.common.UniversalSet;
-import flock.subject.live.Live;
-import flock.subject.live.LiveVariablesFlowAnalysis;
-import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.value.ValueFlowAnalysis;
-import flock.subject.value.ConstProp;
 
 public class ValueFlowAnalysis extends Analysis {
 	public ValueFlowAnalysis() {
@@ -109,17 +84,19 @@ public class ValueFlowAnalysis extends Analysis {
 			if (root.interval > intervalBoundary)
 				continue;
 			root.getProperty("values").lattice = root.getProperty("values").init.eval(root);
+			this.changedNodes.add(root);
 		}
 		for (Node node : nodeset) {
 			if (node.interval > intervalBoundary)
 				continue;
 			{
-				Lattice init = node.getProperty("values").lattice;
+				FlockLattice init = node.getProperty("values").lattice;
 				for (Node pred : g.parentsOf(node)) {
-					Lattice live_o = pred.getProperty("values").transfer.eval(pred);
+					FlockLattice live_o = pred.getProperty("values").transfer.eval(pred);
 					init = init.lub(live_o);
 				}
 				node.getProperty("values").lattice = init;
+				this.changedNodes.add(node);
 			}
 		}
 		while (!worklist.isEmpty()) {
@@ -127,12 +104,12 @@ public class ValueFlowAnalysis extends Analysis {
 			inWorklist.remove(node);
 			if (node.interval > intervalBoundary)
 				continue;
-			Lattice values_n = node.getProperty("values").transfer.eval(node);
+			FlockLattice values_n = node.getProperty("values").transfer.eval(node);
 			for (Node successor : g.childrenOf(node)) {
 				if (successor.interval > intervalBoundary)
 					continue;
 				boolean changed = false;
-				Lattice values_o = successor.getProperty("values").lattice;
+				FlockLattice values_o = successor.getProperty("values").lattice;
 				if (values_n.nleq(values_o)) {
 					successor.getProperty("values").lattice = values_o.lub(values_n);
 					changed = true;
@@ -140,6 +117,9 @@ public class ValueFlowAnalysis extends Analysis {
 				if (changed && !inWorklist.contains(successor)) {
 					worklist.add(successor);
 					inWorklist.add(successor);
+				}
+				if (changed) {
+					this.changedNodes.add(successor);
 				}
 			}
 			for (Node successor : g.parentsOf(node)) {
@@ -150,12 +130,15 @@ public class ValueFlowAnalysis extends Analysis {
 					worklist.add(successor);
 					inWorklist.add(successor);
 				}
+				if (changed) {
+					this.changedNodes.add(successor);
+				}
 			}
 		}
 	}
 }
 
-class Value extends Lattice implements IHasDependencies {
+class Value implements FlockValueLattice {
 	ConstProp value;
 
 	public Value(ConstProp v) {
@@ -163,8 +146,8 @@ class Value extends Lattice implements IHasDependencies {
 	}
 
 	@Override
-	public Object value() {
-		return this.value.value;
+	public FlockValue value() {
+		return this.value;
 	}
 
 	@Override
@@ -183,83 +166,63 @@ class Value extends Lattice implements IHasDependencies {
 	}
 
 	@Override
-	public Lattice lub(Lattice other) {
-		Lattice l = this;
-		IHasDependencies l_d = (IHasDependencies) l;
-		Lattice r = other;
-		IHasDependencies r_d = (IHasDependencies) r;
-		IStrategoTerm l_t = (IStrategoTerm) l.value();
-		IStrategoTerm r_t = (IStrategoTerm) r.value();
-		IStrategoTerm term12 = Helpers
+	public FlockLattice lub(FlockLattice other) {
+		FlockValueLattice l = this;
+		FlockValueLattice r = (FlockValueLattice) other;
+		FlockValueWithDependencies l_v = (FlockValueWithDependencies) l.value();
+		FlockValueWithDependencies r_v = (FlockValueWithDependencies) r.value();
+		IStrategoTerm l_t = (IStrategoTerm) l_v.toTerm();
+		IStrategoTerm r_t = (IStrategoTerm) r_v.toTerm();
+		IStrategoTerm term0 = Helpers
 				.toTerm(new StrategoTuple(new IStrategoTerm[] { Helpers.toTerm(l_t), Helpers.toTerm(r_t) }, null));
-		Lattice result16 = null;
-		if (TermUtils.isTuple(term12)
-				&& (TermUtils.isAppl(Helpers.at(term12, 0)) && (M.appl(Helpers.at(term12, 0)).getName().equals("Top")
-						&& Helpers.at(term12, 0).getSubtermCount() == 0))) {
-			result16 = new Value(
+		FlockLattice result0 = null;
+		if (TermUtils.isTuple(term0)
+				&& (TermUtils.isAppl(Helpers.at(term0, 0)) && (M.appl(Helpers.at(term0, 0)).getName().equals("Top")
+						&& Helpers.at(term0, 0).getSubtermCount() == 0))) {
+			result0 = new Value(
 					new ConstProp(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
-							.withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
+							.withOrigin(l_v.dependencies()).withOrigin(r_v.dependencies()));
 		}
-		if (TermUtils.isTuple(term12)
-				&& (TermUtils.isAppl(Helpers.at(term12, 1)) && (M.appl(Helpers.at(term12, 1)).getName().equals("Top")
-						&& Helpers.at(term12, 1).getSubtermCount() == 0))) {
-			result16 = new Value(
+		if (TermUtils.isTuple(term0)
+				&& (TermUtils.isAppl(Helpers.at(term0, 1)) && (M.appl(Helpers.at(term0, 1)).getName().equals("Top")
+						&& Helpers.at(term0, 1).getSubtermCount() == 0))) {
+			result0 = new Value(
 					new ConstProp(new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
-							.withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
+							.withOrigin(l_v.dependencies()).withOrigin(r_v.dependencies()));
 		}
-		if (TermUtils.isTuple(term12)
-				&& (TermUtils.isAppl(Helpers.at(term12, 0)) && (M.appl(Helpers.at(term12, 0)).getName().equals("Const")
-						&& (Helpers.at(term12, 0).getSubtermCount() == 1 && (TermUtils.isAppl(Helpers.at(term12, 1))
-								&& (M.appl(Helpers.at(term12, 1)).getName().equals("Const")
-										&& Helpers.at(term12, 1).getSubtermCount() == 1)))))) {
-			IStrategoTerm i_t = Helpers.at(Helpers.at(term12, 0), 0);
-			IStrategoTerm j_t = Helpers.at(Helpers.at(term12, 1), 0);
-			result16 = (boolean) i_t.equals(j_t)
+		if (TermUtils.isTuple(term0)
+				&& (TermUtils.isAppl(Helpers.at(term0, 0)) && (M.appl(Helpers.at(term0, 0)).getName().equals("Const")
+						&& (Helpers.at(term0, 0).getSubtermCount() == 1 && (TermUtils.isAppl(Helpers.at(term0, 1))
+								&& (M.appl(Helpers.at(term0, 1)).getName().equals("Const")
+										&& Helpers.at(term0, 1).getSubtermCount() == 1)))))) {
+			IStrategoTerm i_t = Helpers.at(Helpers.at(term0, 0), 0);
+			IStrategoTerm j_t = Helpers.at(Helpers.at(term0, 1), 0);
+			result0 = (boolean) i_t.equals(j_t)
 					? new Value(new ConstProp(new StrategoAppl(new StrategoConstructor("Const", 1),
-							new IStrategoTerm[] { Helpers.toTerm(i_t) }, null)).withOrigin(l_d.dependencies())
-									.withOrigin(r_d.dependencies()))
+							new IStrategoTerm[] { Helpers.toTerm(i_t) }, null)).withOrigin(l_v.dependencies())
+									.withOrigin(r_v.dependencies()))
 					: new Value(new ConstProp(
 							new StrategoAppl(new StrategoConstructor("Top", 0), new IStrategoTerm[] {}, null))
-									.withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
+									.withOrigin(l_v.dependencies()).withOrigin(r_v.dependencies()));
 		}
-		if (TermUtils.isTuple(term12)
-				&& (TermUtils.isAppl(Helpers.at(term12, 1)) && (M.appl(Helpers.at(term12, 1)).getName().equals("Bottom")
-						&& Helpers.at(term12, 1).getSubtermCount() == 0))) {
-			result16 = new Value(new ConstProp(l_t).withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
+		if (TermUtils.isTuple(term0)
+				&& (TermUtils.isAppl(Helpers.at(term0, 1)) && (M.appl(Helpers.at(term0, 1)).getName().equals("Bottom")
+						&& Helpers.at(term0, 1).getSubtermCount() == 0))) {
+			result0 = new Value(new ConstProp(l_t).withOrigin(l_v.dependencies()).withOrigin(r_v.dependencies()));
 		}
-		if (TermUtils.isTuple(term12)
-				&& (TermUtils.isAppl(Helpers.at(term12, 0)) && (M.appl(Helpers.at(term12, 0)).getName().equals("Bottom")
-						&& Helpers.at(term12, 0).getSubtermCount() == 0))) {
-			result16 = new Value(new ConstProp(r_t).withOrigin(l_d.dependencies()).withOrigin(r_d.dependencies()));
+		if (TermUtils.isTuple(term0)
+				&& (TermUtils.isAppl(Helpers.at(term0, 0)) && (M.appl(Helpers.at(term0, 0)).getName().equals("Bottom")
+						&& Helpers.at(term0, 0).getSubtermCount() == 0))) {
+			result0 = new Value(new ConstProp(r_t).withOrigin(l_v.dependencies()).withOrigin(r_v.dependencies()));
 		}
-		if (result16 == null) {
+		if (result0 == null) {
 			throw new RuntimeException("Could not match term");
 		}
-		return result16;
-	}
-
-	@Override
-	public Set<Dependency> dependencies() {
-		return value.dependencies;
-	}
-
-	@Override
-	public void add(Dependency d) {
-		value.add(d);
-	}
-
-	@Override
-	public boolean remove(Dependency d) {
-		return value.remove(d);
-	}
-
-	@Override
-	public boolean contains(Dependency d) {
-		return value.contains(d);
+		return result0;
 	}
 }
 
-class Environment extends MapLattice {
+class Environment extends MapLattice implements FlockCollectionLattice {
 	public Environment(MapLattice v) {
 		super(v);
 	}
@@ -273,9 +236,9 @@ class Environment extends MapLattice {
 	}
 
 	@Override
-	public Lattice lub(Lattice other) {
-		Lattice l = this;
-		Lattice r = other;
+	public FlockLattice lub(FlockLattice other) {
+		FlockCollectionLattice l = this;
+		FlockCollectionLattice r = (FlockCollectionLattice) other;
 		MapLattice l_t = (MapLattice) l;
 		MapLattice r_t = (MapLattice) r;
 		return new Environment((MapLattice) new MapLattice(l_t).lub(r_t));
@@ -291,7 +254,7 @@ class TransferFunctions {
 
 class TransferFunction0 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
 		return UserFunctions.values_f(prev_t);
@@ -300,20 +263,21 @@ class TransferFunction0 extends TransferFunction {
 
 class TransferFunction1 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
 		IStrategoTerm t_t = term;
 		IStrategoTerm n_t = Helpers.at(term, 0);
-		Map result17 = new HashMap();
-		for (Map.Entry<Object, Object> entry : new MapLattice(UserFunctions.values_f(prev_t))) {
+		Map result1 = new HashMap();
+		for (Object o : new MapLattice(UserFunctions.values_f(prev_t))) {
+			Entry entry = (Entry) o;
 			Object k_t = entry.getKey();
 			Object v_t = entry.getValue();
 			if (!k_t.equals(n_t)) {
-				result17.put(k_t, v_t);
+				result1.put(k_t, v_t);
 			}
 		}
-		MapLattice prevmap_t = new MapLattice(result17);
+		MapLattice prevmap_t = new MapLattice(result1);
 		Environment previous_t = (Environment) new Environment(prevmap_t);
 		MapLattice newmap_t = (MapLattice) new MapLattice(MapUtils.create(((IStrategoString) n_t).stringValue(),
 				new Value(
@@ -327,21 +291,22 @@ class TransferFunction1 extends TransferFunction {
 
 class TransferFunction2 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		Node prev_t = node;
 		IStrategoTerm t_t = term;
 		IStrategoTerm n_t = Helpers.at(term, 0);
 		IStrategoTerm i_t = Helpers.at(Helpers.at(term, 1), 0);
-		Map result18 = new HashMap();
-		for (Map.Entry<Object, Object> entry : new MapLattice(UserFunctions.values_f(prev_t))) {
+		Map result2 = new HashMap();
+		for (Object o : new MapLattice(UserFunctions.values_f(prev_t))) {
+			Entry entry = (Entry) o;
 			Object k_t = entry.getKey();
 			Object v_t = entry.getValue();
 			if (!k_t.equals(n_t)) {
-				result18.put(k_t, v_t);
+				result2.put(k_t, v_t);
 			}
 		}
-		MapLattice prevmap_t = new MapLattice(result18);
+		MapLattice prevmap_t = new MapLattice(result2);
 		Environment previous_t = (Environment) new Environment(prevmap_t);
 		MapLattice newmap_t = (MapLattice) new MapLattice(
 				MapUtils.create(((IStrategoString) n_t).stringValue(),
@@ -356,14 +321,14 @@ class TransferFunction2 extends TransferFunction {
 
 class TransferFunction3 extends TransferFunction {
 	@Override
-	public Lattice eval(Node node) {
+	public FlockLattice eval(Node node) {
 		IStrategoTerm term = node.term;
 		return Environment.bottom();
 	}
 }
 
 class UserFunctions {
-	public static Lattice values_f(Object o) {
+	public static FlockLattice values_f(Object o) {
 		Node node = (Node) o;
 		return node.getProperty("values").lattice;
 	}

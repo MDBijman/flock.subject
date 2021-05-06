@@ -1,4 +1,4 @@
-package flock.subject.strategies.analysis;
+package flock.subject.impl.live;
 
 import org.spoofax.interpreter.terms.IStrategoInt;
 import org.spoofax.interpreter.terms.IStrategoString;
@@ -18,10 +18,9 @@ import org.strategoxt.lang.Context;
 import org.strategoxt.lang.Strategy;
 
 import flock.subject.common.CfgNodeId;
+import flock.subject.common.Program;
 import flock.subject.common.Graph.Node;
 import flock.subject.common.SetUtils;
-import flock.subject.strategies.Program;
-import flock.subject.live.Live;
 
 import org.spoofax.terms.ParseError;
 import org.spoofax.terms.Term;
@@ -32,11 +31,13 @@ public class is_live_0_1 extends Strategy {
 	
 	@Override 
 	public IStrategoTerm invoke(Context context, IStrategoTerm current, IStrategoTerm name) {
+		Program.beginTime("api@is_live");
         ITermFactory factory = context.getFactory();
         CfgNodeId id = new CfgNodeId(((IStrategoInt) current).intValue());
         Node node = Program.instance.getNode(id);
         if (node == null) {
         	Program.printDebug("CfgNode is null with id " + id.getId());
+    		Program.endTime("api@is_live");
         	return current;
         }
         Program.beginTime("live");
@@ -50,7 +51,7 @@ public class is_live_0_1 extends Strategy {
         }
         
         boolean contains = names.contains(((IStrategoString) name).stringValue());
-        
+		Program.endTime("api@is_live");
         return contains ? current : null;
     }
 }

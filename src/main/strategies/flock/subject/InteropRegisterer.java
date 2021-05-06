@@ -1,12 +1,12 @@
-package flock.subject.strategies;
+package flock.subject;
 
 import org.strategoxt.lang.JavaInteropRegisterer;
 import org.strategoxt.lang.Strategy;
 
-import flock.subject.strategies.analysis.analyse_program_0_0;
-import flock.subject.strategies.analysis.get_alias_set_0_1;
-import flock.subject.strategies.analysis.get_value_0_1;
-import flock.subject.strategies.analysis.is_live_0_1;
+import flock.subject.impl.alias.get_alias_set_0_1;
+import flock.subject.impl.live.is_live_0_1;
+import flock.subject.impl.value.get_value_0_1;
+import flock.subject.strategies.ast.analyse_program_0_0;
 import flock.subject.strategies.ast.debug_graph_0_0;
 import flock.subject.strategies.ast.update_0_0;
 import flock.subject.strategies.ast.make_id_0_0;

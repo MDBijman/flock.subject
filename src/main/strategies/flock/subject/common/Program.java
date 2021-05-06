@@ -1,30 +1,22 @@
-package flock.subject.strategies;
+package flock.subject.common;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.spoofax.interpreter.library.IOAgent;
 import org.spoofax.interpreter.terms.IStrategoInt;
 import org.spoofax.interpreter.terms.IStrategoTerm;
 import org.spoofax.interpreter.terms.ITermFactory;
 import org.strategoxt.lang.Context;
 
-import flock.subject.alias.PointsToFlowAnalysis;
-import flock.subject.common.CfgNodeId;
-import flock.subject.common.Graph;
 import flock.subject.common.Graph.Node;
-import flock.subject.common.Analysis.Direction;
-import flock.subject.common.Analysis;
-import flock.subject.common.Lattice;
-import flock.subject.live.LiveVariablesFlowAnalysis;
-import flock.subject.value.ValueFlowAnalysis;
+import flock.subject.impl.GraphFactory;
 
 public class Program {
 	public static Program instance = new Program();
@@ -35,9 +27,6 @@ public class Program {
 
 	public Program() {
 		this.analyses = new ArrayList<Analysis>();
-		this.analyses.add(new LiveVariablesFlowAnalysis());
-		this.analyses.add(new ValueFlowAnalysis());
-		this.analyses.add(new PointsToFlowAnalysis());
 	}
 
 	/*
@@ -91,7 +80,8 @@ public class Program {
 	
 	public void createControlFlowGraph(Context context, IStrategoTerm current) {
 		this.io = context.getIOAgent();
-		this.graph = Graph.createCfg(current);
+		this.graph = GraphFactory.createCfg(current);
+		Program.printDebug(this.graph.toGraphviz());
 		this.graph.removeGhostNodes();
 		this.graph.computeIntervals();
 		this.graph.validate();
@@ -113,14 +103,15 @@ public class Program {
 
 	public void replaceNode(Context context, IStrategoTerm current, IStrategoTerm replacement) {
 		Program.increment("replaceNode");
-		Program.beginTime("replaceNode");
-		Program.beginTime("replaceNode remove facts");
+		
+		Program.beginTime("Program@replaceNode");
+		Program.beginTime("Program@replaceNode - a");
 
 		// Nodes outside of the removed id's that have analysis results directly
 		// depending on them (static analysis)
 		Set<Node> dependents = new HashSet<>();
 
-		Node currentNode = Graph.getTermNode(current);
+		Node currentNode = GraphFactory.getTermNode(current);
 		if (currentNode != null && this.graph.getNode(currentNode.getId()) != null) {
 			dependents.addAll(Analysis.getTermDependencies(this.graph, currentNode));
 		}
@@ -138,12 +129,11 @@ public class Program {
 		this.applyGhostMask(removedNodes);
 		this.removeAnalysisFacts(dependents);
 		this.removeFromAnalysis(removedNodes);
-
-		Program.endTime("replaceNode remove facts");
+		Program.endTime("Program@replaceNode - a");
 
 		// Here we patch the graph
-		Program.beginTime("replaceNode fix cfg");
-		Graph subGraph = Graph.createCfg(replacement);
+		Program.beginTime("Program@replaceNode - b");
+		Graph subGraph = GraphFactory.createCfg(replacement);
 		subGraph.removeGhostNodes();
 		subGraph.computeIntervals();
 		this.graph.replaceNodes(removedNodes, subGraph);
@@ -153,19 +143,19 @@ public class Program {
 		}
 
 		// this.allNodes.addAll(newNodes);
-		Program.endTime("replaceNode fix cfg");
-		Program.endTime("replaceNode");
+		Program.endTime("Program@replaceNode - b");
+		Program.endTime("Program@replaceNode");
 	}
 
 	public void removeNode(Context context, IStrategoTerm node) {
-
 		Program.increment("removeNode");
+		Program.beginTime("Program@removeNode");
 		Program.log("api", "removing node " + node.toString());
 		// Nodes outside of the removed id's that have analysis results directly
 		// depending on them (static analysis)
 		Set<Node> dependents = new HashSet<>();
 
-		Node currentNode = Graph.getTermNode(node);
+		Node currentNode = GraphFactory.getTermNode(node);
 		if (currentNode != null && this.graph.getNode(currentNode.getId()) != null) {
 			dependents.addAll(Analysis.getTermDependencies(this.graph, currentNode));
 		}
@@ -182,6 +172,7 @@ public class Program {
 		this.applyGhostMask(removedNodes);
 		this.removeAnalysisFacts(dependents);
 		this.graph.removeGhostNodes();
+		Program.endTime("Program@removeNode");
 	}
 
 	private void initPosition(Graph g, ITermFactory factory) {
@@ -205,16 +196,16 @@ public class Program {
 	}
 
 	public void update(IStrategoTerm program) {
-		Program.beginTime("update");
+		Program.beginTime("Program@update");
 		for (Node node : this.graph.nodes()) {
 			node.interval = this.graph.intervalOf(node);
 		}
 		setNodeTerms(program);
-		Program.endTime("update");
+		Program.endTime("Program@update");
 	}
 
 	private void setNodeTerms(IStrategoTerm term) {
-		Node id = Graph.getTermNode(term);
+		Node id = GraphFactory.getTermNode(term);
 		if (id != null && this.graph.getNode(id.getId()) != null) {
 			this.graph.getNode(id.getId()).term = term;
 		}
@@ -234,7 +225,7 @@ public class Program {
 		for (IStrategoTerm term : program.getSubterms()) {
 			getAllNodes(visited, term);
 		}
-		Node id = Graph.getTermNode(program);
+		Node id = GraphFactory.getTermNode(program);
 		if (id != null) {
 			visited.add(id);
 		}
@@ -251,8 +242,10 @@ public class Program {
 	private static String[] enabled = { "time", "count",
 			// "incremental",
 			// "validation",
-			// "api",
-			// "graphviz"
+			"debug",
+			//"api",
+			//"dependencies",
+			//"graphviz"
 	};
 	private static HashSet<String> enabledTags = new HashSet<>(Arrays.asList(enabled));
 
@@ -291,7 +284,9 @@ public class Program {
 	}
 
 	public static void logTimers() {
-		for (Entry<String, Long> e : cumulMap.entrySet()) {
+		ArrayList<Entry<String, Long>> entries = new ArrayList<>(cumulMap.entrySet());
+		entries.sort((a, b) -> a.getKey().compareTo(b.getKey()));
+		for (Entry<String, Long> e : entries) {
 			Program.log("time", e.getKey() + ": " + e.getValue());
 		}
 	}
@@ -310,7 +305,7 @@ public class Program {
 	}
 }
 
-class PositionLattice extends Lattice {
+class PositionLattice implements FlockLattice {
 
 	IStrategoInt value;
 
@@ -319,7 +314,7 @@ class PositionLattice extends Lattice {
 	}
 
 	@Override
-	public Lattice lub(Lattice o) {
+	public FlockLattice lub(FlockLattice o) {
 		return null;
 	}
 
